@@ -70,7 +70,7 @@ class Field(six.with_metaclass(Field_metaclass, object)):
     """For more information on how this work, please refer to
        http://www.secdev.org/projects/scapy/files/scapydoc.pdf
        chapter ``Adding a New Field''"""
-    __slots__ = ["name", "fmt", "default", "sz", "owners"]
+    __slots__ = ["name", "fmt", "default", "sz", "owners", "fuzzparams"]
     islist = 0
     ismutable = False
     holds_packets = 0
@@ -84,6 +84,7 @@ class Field(six.with_metaclass(Field_metaclass, object)):
         self.default = self.any2i(None, default)
         self.sz = struct.calcsize(self.fmt)
         self.owners = []
+        self.fuzzparams = dict()
 
     def register_owner(self, cls):
         self.owners.append(cls)
