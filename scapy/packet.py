@@ -1920,3 +1920,27 @@ def fuzz(p, _inplace=0):
                         q.default_fields[f.name] = rnd
         q = q.payload
     return p
+
+
+@conf.commands.register
+def protofuzz(p, depth=None, count=None, _inplace=False):
+    if count is None:
+        count = 1
+
+    for i in range(count):
+        if not _inplace:
+            p = p.copy()
+        q = p
+
+        fuzz(q.lastlayer(), _inplace=True)
+        q = q.__class__(bytes(q))
+
+        if depth is None or depth == 0:
+            yield q
+        else:
+            nl = q.guess_payload_class(bytes(q))
+            if isinstance(nl(), Raw):
+                yield q
+            else:
+                for x in protofuzz(q/nl(), depth-1, _inplace=True):
+                    yield x

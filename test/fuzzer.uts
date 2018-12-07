@@ -1,0 +1,115 @@
+% Regression tests for Scapy smart fuzzer
+
+############
+############
++ Tests on basic fields
+
+= Load UDS layer and fuzzer parameters
+load_contrib("automotive.uds")
+import scapy.contrib.automotive.uds_fuzz
+
+= Simple tests, depth 0
+
+pkt = UDS()
+
+for x in protofuzz(pkt, depth=0):
+    if x is None:
+        continue
+    print(x.__repr__())
+
+= Simple tests, depth 1
+
+pkt = UDS()
+
+for x in protofuzz(pkt, depth=1, count=100):
+    if x is None:
+        continue
+    print(x.__repr__())
+
+= Simple tests, depth 0
+
+pkt = UDS()/UDS_RMBA()
+
+for x in protofuzz(pkt, depth=1, count=100):
+    if x is None:
+        continue
+    print(x.__repr__())
+
+
+= Build test protocol
+
+class L0(Packet):
+    fields_desc = [
+        ByteField('L1type', 0)
+    ]
+
+class L1_1(Packet):
+    fields_desc = [
+        ByteField('L2type', 0)
+    ]
+
+bind_layers(L0, L1_1, L1type=0x1)
+
+class L1_2(Packet):
+    fields_desc = [
+        ShortField('L2type', 0)
+    ]
+
+bind_layers(L0, L1_2, L1type=0x2)
+
+class L1_3(Packet):
+    fields_desc = [
+        ShortField('data', 0),
+        IntField('L2type', 0)
+    ]
+
+bind_layers(L0, L1_3, L1type=0x3)
+
+class L2_1(Packet):
+    fields_desc = [
+        ByteField('value', 0),
+        IntField('value1', 0)
+    ]
+
+bind_layers(L1_1, L2_1, L2type=0x1)
+
+class L2_2(Packet):
+    fields_desc = [
+        IntField('data',0),
+        ByteField('value', 0),
+        IntField('value1', 0)
+    ]
+
+bind_layers(L1_2, L2_2, L2type=0x2)
+
+= setup fuzzing parameters for test protocol
+
+L0.L1type.fuzzparams['values'] = [1,2,3]
+L1_1.L2type.fuzzparams["values"] = [1,2]
+
+= simple test with test protocol
+
+pkt = L0()
+
+for x in protofuzz(pkt, depth=1, count=100):
+    if x is None:
+        continue
+ 
+= simple test with test protocol depth=2
+
+pkt = L0()
+
+for x in protofuzz(pkt, depth=2, count=100):
+    if x is None:
+        continue
+    print(x.__repr__())
+
+= simple test with test protocol depth=2
+
+pkt = L0()/L1_1()
+
+for x in protofuzz(pkt, depth=2, count=100):
+    if x is None:
+        continue
+    print(x.__repr__())
+
