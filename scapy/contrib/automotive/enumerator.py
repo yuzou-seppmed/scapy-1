@@ -6,22 +6,21 @@
 # scapy.contrib.description = AutomotiveTestCase and AutomotiveTestCaseExecutor base classes  # noqa: E501
 # scapy.contrib.status = loads
 
+# import datetime
+import functools
 import time
 
 from collections import defaultdict, OrderedDict
 from itertools import product
+from typing import Any, Union, List, NamedTuple, Optional, Iterable, Dict, \
+    Tuple, Set, Callable, Type, cast
 
-from scapy.compat import Any, Union, List, Optional, Iterable, \
-    Dict, Tuple, Set, Callable, Type, cast, NamedTuple
-from scapy.contrib.automotive.graph import Graph, _Edge
-from scapy.contrib.automotive.profiler import Profiler, profile
 from scapy.error import Scapy_Exception, log_interactive
 from scapy.utils import make_lined_table, SingleConversationSocket, EDecimal
 import scapy.modules.six as six
 from scapy.supersocket import SuperSocket
 from scapy.packet import Packet
-from scapy.contrib.automotive.ecu import EcuState, EcuStateModifier, \
-    EcuResponse
+from scapy.contrib.automotive.ecu import EcuState, EcuStateModifier
 from scapy.compat import orb
 
 if six.PY34:
@@ -31,28 +30,74 @@ else:
     ABC = ABCMeta('ABC', (), {})  # type: ignore
 
 
-# Definition outside the class AutomotiveTestCase to allow pickling
-_AutomotiveTestCaseScanResult = NamedTuple(
-    "_AutomotiveTestCaseScanResult",
-    [("state", EcuState),
-     ("req", Packet),
-     ("resp", Optional[Packet]),
-     ("req_ts", Union[EDecimal, int, float]),
-     ("resp_ts", Optional[Union[EDecimal, int, float]])])
+def profile(state, enum=None):
+    # type: (Any, Optional[Any]) -> Callable[[Callable[..., Any]], Callable[..., Any]]  # noqa: E501
+    def profile_decorator(func):
+        # type: (Callable[..., Any]) -> Callable[..., Any]
+        @functools.wraps(func)
+        def wrapper_profiled(*args, **kwargs):  # type: ignore
+            with Profiler(state, enum):
+                value = func(*args, **kwargs)
+            return value
 
-_AutomotiveTestCaseFilteredScanResult = NamedTuple(
-    "_AutomotiveTestCaseFilteredScanResult",
-    [("state", EcuState),
-     ("req", Packet),
-     ("resp", Packet),
-     ("req_ts", Union[int, float]),
-     ("resp_ts", Union[int, float])])
+        return wrapper_profiled
+    return profile_decorator
+
+
+class Profiler:
+    # For the profiling we'll use the unix time
+    # candump is using the same and thus it would be matchable
+
+    # _candump_fmt_date = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    # _filename_milestone = "milestones-%s.csv" % _candump_fmt_date
+    # _filename_profiling = "profiling-%s.csv" % _candump_fmt_date
+    _filename_milestone = "milestones.csv"
+    _filename_profiling = "profiling.csv"
+
+    _first = True
+    enabled = True
+
+    def __init__(self, state, enum=None):
+        # type: (Any, Optional[Any]) -> None
+        # We use the csv format
+        # If len(p) > 1, it would contain a ','
+        # For example: "[1, 2, 3]"
+        # Thus we replace all ',' with a ';' to avoid this
+        self.state = str(state).replace(",", ";")
+        self.enum = str(enum or state).replace(",", ";")
+        self.start_time = time.time()
+
+        if Profiler._first and Profiler.enabled:
+            Profiler._first = False
+            with open(Profiler._filename_profiling, mode="a") as f:  # noqa: E501
+                # Writing header
+                # Not required for milestone file because this is parsed
+                # manually instead of using `read_csv` of plotly
+                f.write("state,enumerator,start,end\n")
+
+    @classmethod
+    def write_milestone(cls, name):
+        # type: (str) -> None
+        if not cls.enabled:
+            return
+        with open(cls._filename_milestone, mode="a") as f:
+            f.write("%s,%f\n" % (name, time.time()))
+
+    def __enter__(self):
+        # type: () -> Profiler
+        self.start_time = time.time()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # type: (Any, Any, Any) -> None
+        if not Profiler.enabled:
+            return
+        with open(Profiler._filename_profiling, mode="a") as f:
+            f.write("%s,%s,%f,%f\n" % (
+                self.state, self.enum, self.start_time, time.time()))
 
 
 class AutomotiveTestCaseExecutorConfiguration(object):
-    """
-    Configuration storage for AutomotiveTestCaseExecutor.
-    """
     def __setitem__(self, key, value):
         # type: (Any, Any) -> None
         self.__dict__[key] = value
@@ -63,36 +108,9 @@ class AutomotiveTestCaseExecutorConfiguration(object):
 
     def __init__(self, test_cases, **kwargs):
         # type: (Union[List[Union[AutomotiveTestCaseABC, Type[AutomotiveTestCaseABC]]], List[Type[AutomotiveTestCaseABC]]], Any) -> None  # noqa: E501
-        """
-        Initializer for configuration.
-
-        The following keywords are used in the AutomotiveTestCaseExecutor:
-            verbose: Enables verbose output and logging
-            debug:  Will raise Exceptions on internal errors
-            delay_state_change: After a state change, a defined time is waited
-
-        :param test_cases: List of AutomotiveTestCase classes or instances.
-                           Classes will get instantiated in this initializer.
-        :param kwargs: Configuration for every AutomotiveTestCase in test_cases
-                       and for the AutomotiveTestCaseExecutor. TestCase local
-                       configuration and global configuration for all TestCase
-                       objects are possible. All keyword arguments given will
-                       be stored for every TestCase. To define a local
-                       configuration for one TestCase only, the keyword
-                       arguments need to be provided in a dictionary.
-                       To assign a configuration dictionary to a TestCase, the
-                       keyword need to identify the TestCase by the following
-                       pattern.
-                       ``MyTestCase_kwargs={"someConfig": 42}``
-                       The keyword is composed from the TestCase class name and
-                       the postfix '_kwargs'.
-
-                       >>> config = AutomotiveTestCaseExecutorConfiguration([MyTestCase], global_config=42, MyTestCase_kwargs={"localConfig": 1337})  # noqa: E501
-        """
 
         self.verbose = kwargs.get("verbose", False)
-        self.debug = kwargs.get("debug", False)
-        self.delay_state_change = kwargs.get("delay_state_change", 0.5)
+        self.delay_state_change = kwargs.pop("delay_state_change", 0.5)
 
         # test_case can be a mix of classes or instances
         self.test_cases = \
@@ -128,9 +146,120 @@ class AutomotiveTestCaseExecutorConfiguration(object):
 
 # type definitions
 _SocketUnion = Union[SuperSocket, SingleConversationSocket]
-_TransitionCallable = Callable[[_SocketUnion, AutomotiveTestCaseExecutorConfiguration, _Edge], bool]  # noqa: E501
-_CleanupCallable = Callable[[_SocketUnion, AutomotiveTestCaseExecutorConfiguration], bool]  # noqa: E501
-_TransitionTuple = Tuple[_TransitionCallable, Optional[_CleanupCallable]]
+_TransitionCallable = \
+    Callable[[_SocketUnion, AutomotiveTestCaseExecutorConfiguration], bool]
+_CleanupCallable = Optional[_TransitionCallable]
+_TransitionTuple = Tuple[_TransitionCallable, _CleanupCallable]
+
+    def __getitem__(self, key):
+        # type: (Any) -> Any
+        return self.__dict__[key]
+
+class Graph:
+    def __init__(self):
+        # type: () -> None
+        """
+        self.edges is a dict of all possible next nodes
+        e.g. {'X': ['A', 'B', 'C', 'E'], ...}
+        self.__transition_functions has all the transition_functions
+        between two nodes, with the two nodes as a tuple as the key
+        e.g. {('X', 'A'): 7, ('X', 'B'): 2, ...}
+        """
+        self.edges = defaultdict(list)  # type: Dict[EcuState, List[EcuState]]
+        self.__transition_functions = {}  # type: Dict[Tuple[EcuState, EcuState], Optional[_TransitionTuple]]  # noqa: E501
+
+    def __reduce_ex__(self, protocol):  # type: ignore
+        f, t, d = self.__reduce__()  # type: ignore
+        try:
+            del d["_Graph__transition_functions"]
+        except KeyError:
+            pass
+        return f, t, d
+
+    def add_edge(self, from_node, to_node, transition_function=None):
+        # type: (EcuState, EcuState, Optional[_TransitionTuple]) -> None  # noqa: E501
+        """
+        Inserts new edge in directional graph
+        :param from_node: start node of edge
+        :param to_node: end node of edge
+        :param transition_function: tuple with enter and cleanup function
+        """
+        Profiler.write_milestone(repr(to_node))
+        self.edges[from_node].append(to_node)
+        self.__transition_functions[(from_node, to_node)] = transition_function
+
+    def get_transition_function(self, from_node, to_node):
+        # type: (EcuState, EcuState) -> Optional[_TransitionTuple]  # noqa: E501
+        try:
+            return self.__transition_functions[(from_node, to_node)]
+        except KeyError:
+            return None
+
+    @property
+    def transition_functions(self):
+        # type: () -> Dict[Tuple[EcuState, EcuState], Optional[_TransitionTuple]]  # noqa: E501
+        return self.__transition_functions
+
+    @property
+    def nodes(self):
+        # type: () -> Union[List[EcuState], Set[EcuState]]
+        return set([n for _, p in self.edges.items() for n in p])
+
+
+class TestCaseGenerator(ABC):
+    @abstractmethod
+    def get_generated_test_case(self):
+        # type: () -> Optional[AutomotiveTestCaseABC]
+        raise NotImplementedError()
+
+
+class StateGenerator(ABC):
+    @staticmethod
+    def dijkstra(graph, initial, end):
+        # type: (Graph, EcuState, EcuState) -> List[EcuState]
+        """
+        Compute shortest paths from initial to end in graph
+        From https://benalexkeen.com/implementing-djikstras-shortest-path-algorithm-with-python/  # noqa: E501
+        :param graph: Graph where path is computed
+        :param initial: Start node
+        :param end: End node
+        :return: A path as list of nodes
+        """
+        shortest_paths = {initial: (None, 0)}  # type: Dict[EcuState, Tuple[Optional[EcuState], int]]  # noqa: E501
+        current_node = initial
+        visited = set()
+
+        while current_node != end:
+            visited.add(current_node)
+            destinations = graph.edges[current_node]
+            weight_to_current_node = shortest_paths[current_node][1]
+
+            for next_node in destinations:
+                weight = 1 + weight_to_current_node
+                if next_node not in shortest_paths:
+                    shortest_paths[next_node] = (current_node, weight)
+                else:
+                    current_shortest_weight = shortest_paths[next_node][1]
+                    if current_shortest_weight > weight:
+                        shortest_paths[next_node] = (current_node, weight)
+
+            next_destinations = {node: shortest_paths[node] for node in
+                                 shortest_paths if node not in visited}
+            if not next_destinations:
+                return []
+            # next node is the destination with the lowest weight
+            current_node = min(next_destinations,
+                               key=lambda k: next_destinations[k][1])
+
+        # Work back through destinations in shortest path
+        path = []
+        while current_node is not None:
+            path.append(current_node)
+            next_node = cast(EcuState, shortest_paths[current_node][0])
+            current_node = next_node
+        # Reverse path
+        path.reverse()
+        return path
 
 
 class AutomotiveTestCaseABC(ABC):
@@ -140,8 +269,8 @@ class AutomotiveTestCaseABC(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def pre_execute(self, socket, state, global_configuration):
-        # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
+    def pre_execute(self, socket, global_configuration):
+        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> None
         raise NotImplementedError()
 
     @abstractmethod
@@ -150,8 +279,8 @@ class AutomotiveTestCaseABC(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def post_execute(self, socket, state, global_configuration):
-        # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
+    def post_execute(self, socket, global_configuration):
+        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> None
         raise NotImplementedError()
 
     @abstractmethod
@@ -165,12 +294,6 @@ class AutomotiveTestCaseABC(ABC):
         # type: () -> bool
         raise NotImplementedError
 
-    @property
-    @abstractmethod
-    def supported_responses(self):
-        # type: () -> List[EcuResponse]
-        raise NotImplementedError
-
 
 class TestCaseGenerator(ABC):
     @abstractmethod
@@ -180,34 +303,13 @@ class TestCaseGenerator(ABC):
 
 
 class StateGenerator(ABC):
-    @staticmethod
-    def _set_args_for_transition_function(config, class_name, edge, args):
-        # type: (AutomotiveTestCaseExecutorConfiguration, str, _Edge, Tuple[Any, ...]) -> None  # noqa: E501
-        key = "_transition_function_args"
-        try:
-            if config[class_name + key] is None:
-                config[class_name + key] = dict()
-        except KeyError:
-            config[class_name + key] = dict()
-
-        config[class_name + key][edge] = args
-
-    @staticmethod
-    def _get_args_for_transition_function(config, class_name, edge):
-        # type: (AutomotiveTestCaseExecutorConfiguration, str, _Edge) -> Optional[Tuple[Any]]  # noqa: E501
-        key = "_transition_function_args"
-        try:
-            return config[class_name + key][edge]
-        except KeyError:
-            return None
-
     def get_new_edge(self, socket, config):
-        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> Optional[_Edge]  # noqa: E501
+        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> Optional[Tuple[EcuState, EcuState]]  # noqa: E501
         if not isinstance(self, AutomotiveTestCaseABC):
             raise TypeError("Only AutomotiveTestCaseABC instances "
                             "can be a StateGenerator")
         try:
-            state, _, resp, _, _ = cast(AutomotiveTestCase, self).results[-1]
+            state, req, resp, _, _ = cast(AutomotiveTestCase, self).results[-1]
         except IndexError:
             return None
 
@@ -220,15 +322,12 @@ class StateGenerator(ABC):
         else:
             return None
 
-    @abstractmethod
-    def get_transition_function(self, socket, config, edge):
-        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration, _Edge) -> Optional[_TransitionTuple]  # noqa: E501
+    def get_transition_function(self, socket, config):
+        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> Optional[_TransitionTuple]  # noqa: E501
         """
 
         :param socket: Socket to target
         :param config: Configuration of TestCaseExecutor
-        :param edge: Tuple of EcuState objects for the requested
-                     transition function
         :return: Returns an optional tuple with two functions. Both functions
                  take a Socket and the TestCaseExecutor configuration as
                  arguments and return True if the execution was successful.
@@ -260,8 +359,8 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
         # type: () -> int
         return len(self.__test_cases)
 
-    def __reduce__(self):  # type: ignore
-        f, t, d = super(StagedAutomotiveTestCase, self).__reduce__()  # type: ignore  # noqa: E501
+    def __reduce_ex__(self, protocol):  # type: ignore
+        f, t, d = self.__reduce__()  # type: ignore
         try:
             del d["_StagedAutomotiveTestCase__connectors"]
         except KeyError:
@@ -301,18 +400,18 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
             return None
 
     def get_new_edge(self, socket, config):
-        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> Optional[_Edge]   # noqa: E501
+        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> Optional[Tuple[EcuState, EcuState]]   # noqa: E501
         try:
             test_case = cast(StateGenerator, self.current_test_case)
             return test_case.get_new_edge(socket, config)
         except AttributeError:
             return None
 
-    def get_transition_function(self, socket, config, edge):
-        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration, _Edge) -> Optional[_TransitionTuple]  # noqa: E501
+    def get_transition_function(self, socket, config):
+        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> Optional[_TransitionTuple]  # noqa: E501
         try:
             test_case = cast(StateGenerator, self.current_test_case)
-            return test_case.get_transition_function(socket, config, edge)
+            return test_case.get_transition_function(socket, config)
         except AttributeError:
             return None
 
@@ -348,8 +447,8 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
             self.__completion_delay = 0
         return False
 
-    def pre_execute(self, socket, state, global_configuration):
-        # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
+    def pre_execute(self, socket, global_configuration):
+        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> None
         test_case_cls = self.current_test_case.__class__
         try:
             self.__current_kwargs = global_configuration[
@@ -357,28 +456,28 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
         except KeyError:
             self.__current_kwargs = dict()
 
-        if callable(self.current_connector) and self.__stage_index > 0:
+        if self.current_connector and self.__stage_index > 0:
             if self.previous_test_case:
-                con = self.current_connector  # type: _TestCaseConnectorCallable  # noqa: E501
-                con_kwargs = con(self.previous_test_case,
-                                 self.current_test_case)
-                if self.__current_kwargs is not None and con_kwargs is not None:  # noqa: E501
-                    self.__current_kwargs.update(con_kwargs)
+                connection_kwargs = self.current_connector(
+                    self.previous_test_case, self.current_test_case)
+                if self.__current_kwargs is not None and \
+                        connection_kwargs is not None:
+                    self.__current_kwargs.update(connection_kwargs)
 
             log_interactive.debug("[i] Stage AutomotiveTestCase %s kwargs: %s",
                                   self.current_test_case.__class__.__name__,
                                   self.__current_kwargs)
 
-        self.current_test_case.pre_execute(socket, state, global_configuration)
+        self.current_test_case.pre_execute(socket, global_configuration)
 
     def execute(self, socket, state, **kwargs):
         # type: (_SocketUnion, EcuState, Any) -> None  # noqa: E501
         kwargs = self.__current_kwargs or dict()
         self.current_test_case.execute(socket, state, **kwargs)
 
-    def post_execute(self, socket, state, global_configuration):
-        # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
-        self.current_test_case.post_execute(socket, state, global_configuration)  # noqa: E501
+    def post_execute(self, socket, global_configuration):
+        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> None
+        self.current_test_case.post_execute(socket, global_configuration)
 
     @staticmethod
     def _show_headline(headline, sep="=", dump=False):
@@ -412,15 +511,24 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
         # type: () -> bool
         return all(e.completed for e in self.__test_cases)
 
-    @property
-    def supported_responses(self):
-        # type: () -> List[EcuResponse]
 
-        supported_responses = list()
-        for tc in self.test_cases:
-            supported_responses += tc.supported_responses
+# Definition outside the class AutomotiveTestCase to allow pickling
+_AutomotiveTestCaseScanResult = NamedTuple(
+    "_AutomotiveTestCaseScanResult",
+    [("state", EcuState),
+     ("req", Packet),
+     ("resp", Optional[Packet]),
+     ("req_ts", Union[EDecimal, int, float]),
+     ("resp_ts", Optional[Union[EDecimal, int, float]])])
 
-        return supported_responses
+# Definition outside the class AutomotiveTestCase to allow pickling
+_AutomotiveTestCaseFilteredScanResult = NamedTuple(
+    "_AutomotiveTestCaseFilteredScanResult",
+    [("state", EcuState),
+     ("req", Packet),
+     ("resp", Packet),
+     ("req_ts", Union[int, float]),
+     ("resp_ts", Union[int, float])])
 
 
 class AutomotiveTestCase(AutomotiveTestCaseABC):
@@ -466,8 +574,8 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
         self._retry_pkt = None  # type: Optional[Union[Packet, Iterable[Packet]]]  # noqa: E501
         self._negative_response_blacklist = [0x10, 0x11]  # type: List[int]
 
-    def __reduce__(self):  # type: ignore
-        f, t, d = super(AutomotiveTestCase, self).__reduce__()  # type: ignore
+    def __reduce_ex__(self, protocol):  # type: ignore
+        f, t, d = self.__reduce__()  # type: ignore
         try:
             del d["_request_iterators"]
         except KeyError:
@@ -535,8 +643,8 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
         return self.__get_retry_iterator() or \
             self.__get_initial_request_iterator(state, **kwargs)
 
-    def pre_execute(self, socket, state, global_configuration):
-        # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
+    def pre_execute(self, socket, global_configuration):
+        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> None
         pass
 
     def execute(self, socket, state, timeout=1, execution_time=1200, **kwargs):
@@ -581,8 +689,8 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
         log_interactive.debug("[i] States completed %s",
                               repr(self._state_completed))
 
-    def post_execute(self, socket, state, global_configuration):
-        # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
+    def post_execute(self, socket, global_configuration):
+        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> None
         pass
 
     def _evaluate_response(self, response, **kwargs):
@@ -597,19 +705,15 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
 
         retry_if_busy_returncode = kwargs.pop("retry_if_busy_returncode", True)
 
-        if exit_if_service_not_supported and response.service == 0x7f:
-            response_code = self._get_negative_response_code(response)
-            if response_code in [0x11, 0x7f]:
-                names = {0x11: "serviceNotSupported",
-                         0x7f: "serviceNotSupportedInActiveSession"}
-                msg = "[-] Exit execute because negative response " \
-                      "%s received!" % names[response_code]
-                log_interactive.debug(msg)
-                # execute of current state is completed,
-                # since a serviceNotSupported negative response was received
-                self._state_completed[self._results[-1].state] = True
-                # stop current execute and exit
-                return True
+        if exit_if_service_not_supported and response.service == 0x7f and \
+                self._get_negative_response_code(response) == 0x11:
+            log_interactive.debug("[-] Exit execute because negative response "
+                                  "serviceNotSupported received!")
+            # execute of current state is completed,
+            # since a serviceNotSupported negative response was received
+            self._state_completed[self._results[-1].state] = True
+            # stop current execute and exit
+            return True
 
         if retry_if_busy_returncode and response.service == 0x7f \
                 and self._get_negative_response_code(response) == 0x21:
@@ -637,6 +741,42 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
                 return True
 
         return False
+
+    def dump(self, completed_only=True):
+        # type: (bool) -> Dict[str, Any]
+        if completed_only:
+            selected_states = [k for k, v in self._state_completed.items() if v]  # noqa: E501
+        else:
+            selected_states = list(self._state_completed.keys())
+
+        isotp_params = list()
+        for s, req, resp, req_ts, resp_ts in self._results:
+            if s in selected_states and resp is not None:
+                isotp_tup = (resp.src, resp.dst, resp.exsrc, resp.exdst)
+                if isotp_tup not in isotp_params:
+                    isotp_params.append(isotp_tup)
+
+        data = [{"state": str(s),
+                 "protocol": str(req.__class__.__name__),
+                 "req_time": req_ts,
+                 "req_idx": list(self.__result_packets.keys()).index(bytes(req)),  # noqa: E501
+                 "resp_time": resp_ts if resp is not None else None,
+                 "resp_idx": list(self.__result_packets.keys()).index(bytes(resp)) if resp is not None else None,  # noqa: E501
+                 "isotp_param_idx": isotp_params.index(
+                     (resp.src, resp.dst, resp.exsrc, resp.exdst))
+                 if resp is not None else None}
+                for s, req, resp, req_ts, resp_ts in self._results
+                if s in selected_states]
+
+        return {"format_version": 0.3,
+                "name": str(self.__class__.__name__),
+                "states_completed": [(str(k), v) for k, v in
+                                     self._state_completed.items()],
+                "result_packets": [str(k) for k in self.__result_packets.keys()],  # noqa: E501
+                "isotp_params": [{"resp_src": t[0], "resp_dst": t[1],
+                                  "resp_exsrc": t[2], "resp_exdst": t[3]}
+                                 for t in isotp_params],
+                "data": data}
 
     def _compute_statistics(self):
         # type: () -> List[Tuple[str, str, str]]
@@ -727,30 +867,22 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
         return self._results
 
     @property
-    def results_with_response(self):
+    def filtered_results(self):
         # type: () -> List[_AutomotiveTestCaseFilteredScanResult]
         filtered_results = list()
+
         for r in self._results:
             if r.resp is None:
                 continue
             if r.resp_ts is None:
                 continue
             fr = cast(_AutomotiveTestCaseFilteredScanResult, r)
-            filtered_results.append(fr)
-        return filtered_results
-
-    @property
-    def filtered_results(self):
-        # type: () -> List[_AutomotiveTestCaseFilteredScanResult]
-        filtered_results = list()
-
-        for r in self.results_with_response:
-            if r.resp.service != 0x7f:
-                filtered_results.append(r)
+            if fr.resp.service != 0x7f:
+                filtered_results.append(fr)
                 continue
-            nrc = self._get_negative_response_code(r.resp)
+            nrc = self._get_negative_response_code(fr.resp)
             if nrc not in self.negative_response_blacklist:
-                filtered_results.append(r)
+                filtered_results.append(fr)
         return filtered_results
 
     @property
@@ -823,6 +955,9 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
         else:
             s += "\n"
 
+        if filtered:
+            self._prepare_negative_response_blacklist()
+
         s += self._show_negative_response_details(dump) or "" + "\n"
         if filtered and len(self.negative_response_blacklist):
             s += "The following negative response codes are blacklisted: %s\n"\
@@ -839,9 +974,10 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
         # type: (bool) -> Optional[str]
         completed = [(state, self._state_completed[state])
                      for state in self.scanned_states]
-        return make_lined_table(
-            completed, lambda tup: ("Scan state completed", tup[0], tup[1]),
-            dump=dump)
+        return make_lined_table(completed,
+                                lambda tup: ("Scan state completed",
+                                             tup[0], tup[1]),
+                                dump=dump)
 
     def _show_results_information(self, dump, filtered):
         # type: (bool, bool) -> Optional[str]
@@ -859,9 +995,6 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
 
     def show(self, dump=False, filtered=True, verbose=False):
         # type: (bool, bool, bool) -> Optional[str]
-        if filtered:
-            self._prepare_negative_response_blacklist()
-
         s = self._show_header(dump) or ""
         s += self._show_statistics(dump) or ""
         s += self._show_negative_response_information(dump, filtered) or ""
@@ -905,8 +1038,8 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
             supported_resps.append(EcuResponse(state=states, responses=resp))
         return supported_resps
 
-
 class AutomotiveTestCaseExecutor(ABC):
+
     @property
     def __initial_ecu_state(self):
         # type: () -> EcuState
@@ -933,22 +1066,26 @@ class AutomotiveTestCaseExecutor(ABC):
         self.reconnect_handler = reconnect_handler
 
         self.state_graph = Graph()
-        self.state_graph.add_edge((self.__initial_ecu_state,
-                                   self.__initial_ecu_state))
+        self.state_graph.add_edge(self.__initial_ecu_state,
+                                  self.__initial_ecu_state)
 
-        self.cleanup_functions = list()  # type: List[_CleanupCallable]
+        self.cleanup_functions = list()  # type: List[_TransitionCallable]
 
         self.configuration = AutomotiveTestCaseExecutorConfiguration(
             test_cases or self.default_test_case_clss, **kwargs)
 
-    def __reduce__(self):  # type: ignore
-        f, t, d = super(AutomotiveTestCaseExecutor, self).__reduce__()  # type: ignore  # noqa: E501
+    def __reduce_ex__(self, protocol):  # type: ignore
+        f, t, d = self.__reduce__()  # type: ignore
         try:
             del d["socket"]
         except KeyError:
             pass
         try:
             del d["reset_handler"]
+        except KeyError:
+            pass
+        try:
+            del d["cleanup_functions"]
         except KeyError:
             pass
         try:
@@ -962,6 +1099,15 @@ class AutomotiveTestCaseExecutor(ABC):
     def default_test_case_clss(self):
         # type: () -> List[Type[AutomotiveTestCaseABC]]
         raise NotImplementedError()
+
+    def dump(self, completed_only=True):
+        # type: (bool) -> Dict[str, Any]
+        return {"format_version": 0.1,
+                "test_cases": [cast(AutomotiveTestCase, e).dump(completed_only)
+                               for e in self.configuration.test_cases],
+                "state_graph": [str(p) for p in self.state_paths],
+                "verbose": self.configuration.verbose,
+                "delay_state_change": self.configuration.delay_state_change}
 
     @property
     def state_paths(self):
@@ -1011,8 +1157,7 @@ class AutomotiveTestCaseExecutor(ABC):
 
     def execute_test_case(self, test_case):
         # type: (AutomotiveTestCaseABC) -> None
-        test_case.pre_execute(
-            self.socket, self.target_state, self.configuration)
+        test_case.pre_execute(self.socket, self.configuration)
 
         try:
             test_case_kwargs = self.configuration[test_case.__class__.__name__]
@@ -1023,20 +1168,19 @@ class AutomotiveTestCaseExecutor(ABC):
                               test_case.__class__.__name__, test_case_kwargs)
 
         test_case.execute(self.socket, self.target_state, **test_case_kwargs)
-        test_case.post_execute(
-            self.socket, self.target_state, self.configuration)
+        test_case.post_execute(self.socket, self.configuration)
 
         if isinstance(test_case, StateGenerator):
             edge = test_case.get_new_edge(self.socket, self.configuration)
             if edge:
-                log_interactive.debug("Edge found %s", edge)
+                log_interactive.debug("Edge found %s %s", edge[0], edge[1])
                 transition_function = test_case.get_transition_function(
-                    self.socket, self.configuration, edge)
-                self.state_graph.add_edge(edge, transition_function)
+                    self.socket, self.configuration)
+                self.state_graph.add_edge(edge[0], edge[1],
+                                          transition_function)
 
         if isinstance(test_case, TestCaseGenerator):
-            test_case_gen = cast(TestCaseGenerator, test_case)
-            new_test_case = test_case_gen.get_generated_test_case()
+            new_test_case = cast(TestCaseGenerator, test_case).get_generated_test_case()  # noqa: E501
             if new_test_case:
                 self.configuration.test_cases.append(new_test_case)
 
@@ -1067,8 +1211,6 @@ class AutomotiveTestCaseExecutor(ABC):
                         test_case_executed = True
                     except (OSError, ValueError, Scapy_Exception, BrokenPipeError) as e:  # noqa: E501
                         log_interactive.critical("[-] Exception: %s", e)
-                        if self.configuration.debug:
-                            raise e
 
             if not test_case_executed:
                 log_interactive.info(
@@ -1096,24 +1238,26 @@ class AutomotiveTestCaseExecutor(ABC):
     @profile("State change")
     def enter_state(self, prev_state, next_state):
         # type: (EcuState, EcuState) -> bool
-        edge = (prev_state, next_state)
-        funcs = self.state_graph.get_transition_tuple_for_edge(edge)
+        funcs = self.state_graph.get_transition_function(
+            prev_state, next_state)
 
         if funcs is None:
-            log_interactive.error("No transition function for edge %s", edge)
+            log_interactive.error("No transition function for transition from "
+                                  "state %s to %s", prev_state, next_state)
             return False
 
-        trans_func, clean_func = funcs
-        state_changed = trans_func(self.socket, self.configuration, edge)
-        if state_changed:
+        cleanup_function = funcs[1]
+        if cleanup_function is not None:
+            self.cleanup_functions.insert(
+                len(self.cleanup_functions), cleanup_function)
+
+        if funcs[0](self.socket, self.configuration):
             self.target_state = next_state
-
-            if clean_func is not None:
-                self.cleanup_functions += [clean_func]
             return True
-        else:
-            log_interactive.info("Transition for edge %s failed", edge)
-            return False
+
+        log_interactive.info(
+            "Transition from state %s to %s failed", prev_state, next_state)
+        return False
 
     def cleanup_state(self):
         # type: () -> None
@@ -1138,29 +1282,3 @@ class AutomotiveTestCaseExecutor(ABC):
             for s in self.state_graph.nodes:
                 data += [(t.__class__.__name__, repr(s), t.has_completed(s))]
         make_lined_table(data, lambda tup: (tup[1], tup[0], tup[2]))
-
-    @property
-    def supported_responses(self):
-        # type: () -> List[EcuResponse]
-        def sort_key_func(resp):
-            # type: (EcuResponse) -> Tuple[bool, int, int, int]
-            """
-            This sorts responses in the following order:
-            1. Positive responses first
-            2. Lower ServiceID first
-            3. Less states first
-            4. Longer (more specific) responses first
-            :param resp: EcuResponse to be sorted
-            :return: Tuple as sort key
-            """
-            return (resp.key_response.service == 0x7f,
-                    resp.key_response.service,
-                    0xffffffff - len(resp.states or []),
-                    0xffffffff - len(resp.key_response))
-
-        supported_responses = list()
-        for tc in self.configuration.test_cases:
-            supported_responses += tc.supported_responses
-
-        supported_responses.sort(key=sort_key_func)
-        return supported_responses

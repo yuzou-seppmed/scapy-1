@@ -94,7 +94,7 @@ drain_bus(iface1)
 
 started = threading.Event()
 g = Graph()
-g.add_edge((EcuState(session=1), EcuState(session=1)))
+g.add_edge(EcuState(session=1), EcuState(session=1))
 
 def answer(pkt):
     if pkt.service < 0xff:
@@ -110,10 +110,10 @@ with new_can_socket0() as isocan1, ISOTPSocket(isocan1, sid=0x241, did=0x641, ba
     started.wait(timeout=5)
     session_scanner = UDS_DSCEnumerator()
     for _ in range(5):
-        session_scanner.execute(sendSock, EcuState(session=1), session_range=range(1,4), timeout=0.2, overwrite_timeout=False)
+        session_scanner.execute(sendSock, EcuState(session=1), session_range=range(1,4), timeout=0.1, overwrite_timeout=False)
         edge = session_scanner.get_new_edge(None, None)
         if edge:
-            g.add_edge(edge)
+            g.add_edge(*edge)
     sendSock.send(b"\xff")
     threadSniffer.join(timeout=5)
 
@@ -144,9 +144,9 @@ drain_bus(iface1)
 
 started = threading.Event()
 g = Graph()
-g.add_edge((EcuState(session=1), EcuState(session=1)))
+g.add_edge(EcuState(session=1), EcuState(session=1))
 config = {"state_graph": g, "UDS_DSCEnumerator":
-    {"session_range": range(1,4), "timeout": 0.2, "overwrite_timeout": False}}
+    {"session_range": range(1,4), "timeout": 0.1, "overwrite_timeout": False}}
 
 def answer(pkt):
     if pkt.service < 0xff:
@@ -169,12 +169,12 @@ with new_can_socket0() as isocan1, ISOTPSocket(isocan1, sid=0x241, did=0x641, ba
     for _ in range(15):
         if staged_enumerators.has_completed(EcuState(session=1)):
             continue
-        staged_enumerators.pre_execute(sendSock, EcuState(session=1), config)
+        staged_enumerators.pre_execute(sendSock, config)
         staged_enumerators.execute(sendSock, EcuState(session=1))
-        staged_enumerators.post_execute(sendSock, EcuState(session=1), config)
+        staged_enumerators.post_execute(sendSock, config)
         edge = staged_enumerators.get_new_edge(None, None)
         if edge:
-            g.add_edge(edge)
+            g.add_edge(*edge)
     sendSock.send(b"\xff")
     threadSniffer.join(timeout=10)
 
@@ -234,19 +234,17 @@ with new_can_socket0() as isocan1, ISOTPSocket(isocan1, sid=0x241, did=0x641, ba
     def reset():
         answering_machine.state.reset()
         answering_machine.state["session"] = 1
-    sim = threading.Thread(target=answering_machine, kwargs={'timeout': 300, "stop_filter": lambda x: bytes(x) == b"\xff\xff\xff"})
+    sim = threading.Thread(target=answering_machine, kwargs={'timeout': 200, "stop_filter": lambda x: bytes(x) == b"\xff\xff\xff"})
     sim.start()
     reset()
-    scanner = UDS_Scanner(tester, reset_handler=reset, delay_state_change=0, test_cases=[UDS_DSCEnumerator], UDS_DSCEnumerator_kwargs={"timeout": 0.1, "overwrite_timeout": False})
+    scanner = UDS_Scanner(tester, reset_handler=reset, test_cases=[UDS_DSCEnumerator], UDS_DSCEnumerator_kwargs={"timeout": 0.2, "overwrite_timeout": False}, delay_state_change=0)
     scanner.scan()
     scanner.scan()
-    scanner.scan()
-    scanner.cleanup_state()
     tester.send(b"\xff\xff\xff")
     sim.join(timeout=2)
 
-print(scanner.state_paths)
 assert scanner.configuration.test_cases[0].completed
+print(scanner.state_paths)
 print(len(scanner.configuration.test_cases[0].filtered_results))
 assert len(scanner.configuration.test_cases[0].filtered_results) == 7*8
 assert EcuState(session=1) in scanner.state_graph.nodes
@@ -288,10 +286,9 @@ with new_can_socket0() as isocan1, ISOTPSocket(isocan1, sid=0x241, did=0x641, ba
         answering_machine.state["session"] = 1
     sim = threading.Thread(target=answering_machine, kwargs={'timeout': 200, "stop_filter": lambda x: bytes(x) == b"\xff\xff\xff"})
     sim.start()
-    scanner = UDS_Scanner(tester, reset_handler=reset, delay_state_change=0, test_cases=[UDS_DSCEnumerator], UDS_DSCEnumerator_kwargs={"timeout": 0.2, "overwrite_timeout": False})
+    scanner = UDS_Scanner(tester, reset_handler=reset, test_cases=[UDS_DSCEnumerator], UDS_DSCEnumerator_kwargs={"timeout": 0.2, "overwrite_timeout": False}, delay_state_change=0)
     scanner.scan()
     scanner.scan()
-    scanner.cleanup_state()
     tester.send(b"\xff\xff\xff")
     sim.join(timeout=2)
 
@@ -341,12 +338,10 @@ with new_can_socket0() as isocan1, ISOTPSocket(isocan1, sid=0x241, did=0x641, ba
         answering_machine.state.reset()
         answering_machine.state["session"] = 1
         answering_machine.state["tp"] = 0
-    sim = threading.Thread(target=answering_machine, kwargs={'timeout': 200, "stop_filter": lambda x: bytes(x) == b"\xff\xff\xff"})
+    sim = threading.Thread(target=answering_machine, kwargs={'timeout': 100, "stop_filter": lambda x: bytes(x) == b"\xff\xff\xff"})
     sim.start()
-    scanner = UDS_Scanner(tester, reset_handler=reset, test_cases=[UDS_ServiceEnumerator], delay_state_change=0, timeout=0.2, retry_if_busy_returncode=False, verbose=True)
+    scanner = UDS_Scanner(tester, reset_handler=reset, test_cases=[UDS_ServiceEnumerator], delay_state_change=0, timeout=0.1, retry_if_busy_returncode=False, verbose=True)
     scanner.scan()
-    scanner.scan()
-    scanner.cleanup_state()
     tester.send(b"\xff\xff\xff")
     sim.join(timeout=2)
 
@@ -386,10 +381,9 @@ with new_can_socket0() as isocan1, ISOTPSocket(isocan1, sid=0x241, did=0x641, ba
     sim = threading.Thread(target=answering_machine, kwargs={'timeout': 100, "stop_filter": lambda x: bytes(x) == b"\xff\xff\xff"})
     sim.start()
     scanner = UDS_Scanner(tester, reset_handler=reset, test_cases=[UDS_ServiceEnumerator, UDS_DSCEnumerator],
-                          UDS_DSCEnumerator_kwargs={"timeout": 0.2, "overwrite_timeout": False},
-                          UDS_ServiceEnumerator_kwargs={"retry_if_busy_returncode": False}, delay_state_change=0, timeout=0.2, verbose=True)
+                          UDS_DSCEnumerator_kwargs={"timeout": 0.1, "overwrite_timeout": False},
+                          UDS_ServiceEnumerator_kwargs={"retry_if_busy_returncode": False}, delay_state_change=0, timeout=0.1, verbose=True)
     scanner.scan()
-    scanner.cleanup_state()
     tester.send(b"\xff\xff\xff")
     sim.join(timeout=2)
 
@@ -466,22 +460,20 @@ with new_can_socket0() as isocan1, ISOTPSocket(isocan1, sid=0x241, did=0x641, ba
     def reset():
         answering_machine.state.reset()
         answering_machine.state["session"] = 1
-    sim = threading.Thread(target=answering_machine, kwargs={'timeout': 500, "stop_filter": lambda x: bytes(x) == b"\xff\xff\xff"})
+    sim = threading.Thread(target=answering_machine, kwargs={'timeout': 100, "stop_filter": lambda x: bytes(x) == b"\xff\xff\xff"})
     sim.start()
-    scanner = UDS_Scanner(tester, reset_handler=reset, test_cases=[UDS_ServiceEnumerator, UDS_DSCEnumerator, UDS_SA_XOR_Enumerator, UDS_TPEnumerator],
-                          UDS_DSCEnumerator_kwargs={"overwrite_timeout": False},
-                          UDS_ServiceEnumerator_kwargs={"retry_if_busy_returncode": False}, delay_state_change=0, timeout=0.2, verbose=True)
+    scanner = UDS_Scanner(tester, reset_handler=reset, test_cases=[UDS_ServiceEnumerator, UDS_DSCEnumerator, UDS_SA_XOR_Enumerator],
+                          UDS_DSCEnumerator_kwargs={"timeout": 0.1, "overwrite_timeout": False},
+                          UDS_ServiceEnumerator_kwargs={"retry_if_busy_returncode": False}, delay_state_change=0, timeout=0.1, verbose=True)
     scanner.scan()
-    scanner.scan()
-    scanner.cleanup_state()
     tester.send(b"\xff\xff\xff")
     sim.join(timeout=2)
 
 
 print(scanner.state_paths)
-scanner.show_testcases()
-scanner.show_testcases_status()
-
+scanner.configuration.test_cases[0].show()
+scanner.configuration.test_cases[1].show()
+scanner.configuration.test_cases[2].show()
 
 assert scanner.configuration.test_cases[0].completed
 assert scanner.configuration.test_cases[1].completed
@@ -494,11 +486,21 @@ assert EcuState(session=2, tp=1, security_level=8) in scanner.state_graph.nodes
 print(len(scanner.configuration.test_cases[0].filtered_results))
 assert len(scanner.configuration.test_cases[0].filtered_results) == 11
 
+assert scanner.configuration.test_cases[0].completed
+assert scanner.configuration.test_cases[1].completed
+assert EcuState(session=1) in scanner.state_graph.nodes
+assert EcuState(session=2, tp=1) in scanner.state_graph.nodes
+assert EcuState(session=3, tp=1) in scanner.state_graph.nodes
+assert EcuState(session=4, tp=1, security_level=8) in scanner.state_graph.nodes
+assert EcuState(session=2, tp=1, security_level=2) in scanner.state_graph.nodes
+assert EcuState(session=2, tp=1, security_level=8) in scanner.state_graph.nodes
+print(len(scanner.configuration.test_cases[0].filtered_results))
+assert len(scanner.configuration.test_cases[0].filtered_results) == 11
 
 = UDS Scanner pickle
-~ python3_only
 
 f = io.BytesIO()
+
 pickle.dump(scanner, f)
 del scanner
 unp = pickle.loads(f.getvalue())

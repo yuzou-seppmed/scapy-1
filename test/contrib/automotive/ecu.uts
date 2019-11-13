@@ -6,7 +6,6 @@
 ############
 
 + Setup
-~ conf command
 
 = Load modules
 
@@ -189,48 +188,6 @@ s1.a = 2
 
 s2.A = 2
 s2.a = 1
-
-assert s1 < s2
-
-= less than tests 4
-
-s1 = EcuState()
-s2 = EcuState()
-
-
-s1.A = 1
-s1.a = 2
-
-s2.A = 2
-s2.b = 100
-
-assert s1 < s2
-
-= less than tests 5
-
-s1 = EcuState()
-s2 = EcuState()
-
-
-s1.A = 100
-s1.a = 2
-
-s2.A = 2
-s2.b = 100
-
-assert s1 > s2
-
-= less than tests 6
-
-s1 = EcuState()
-s2 = EcuState()
-
-
-s1.A = 100
-s1.B = 200
-
-s2.a = 2
-s2.b = 1
 
 assert s1 < s2
 
@@ -493,10 +450,7 @@ assert response.supports_state(EcuState(session=3))
 assert response.key_response.service == 80
 assert response.key_response.diagnosticSessionType == 2
 response = ecu.supported_responses[4]
-print(response)
-state = EcuState(session=2, security_level=18)
-print(state)
-assert response.supports_state(state)
+assert response.supports_state(EcuState(session=2, security_level=18))
 assert response.key_response.service == 110
 assert response.key_response.dataIdentifier == 61786
 assert len(ecu.log["TransferData"]) == 2
@@ -514,18 +468,15 @@ assert len(udsmsgs) == 50
 
 ecu = session.ecu
 response = ecu.supported_responses[0]
-assert response.supports_state(EcuState())
+response.supports_state(EcuState())
 assert response.key_response.service == 80
 assert response.key_response.diagnosticSessionType == 3
 response = ecu.supported_responses[1]
-assert response.supports_state(EcuState(session=3))
+response.supports_state(EcuState(session=3))
 assert response.key_response.service == 80
 assert response.key_response.diagnosticSessionType == 2
 response = ecu.supported_responses[4]
-print(response)
-state = EcuState(session=2, security_level=18)
-print(state)
-assert response.supports_state(state)
+response.supports_state(EcuState(session=2, security_level=18))
 assert response.key_response.service == 110
 assert response.key_response.dataIdentifier == 61786
 assert len(ecu.log["TransferData"]) == 2

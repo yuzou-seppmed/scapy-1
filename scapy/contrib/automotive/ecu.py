@@ -13,7 +13,8 @@ import random
 import copy
 
 from collections import defaultdict
-from types import GeneratorType
+from typing import Any, Union, Iterable, Callable, List, Optional, Tuple, \
+    Type, cast, Dict
 
 from scapy.compat import Any, Union, Iterable, Callable, List, Optional, \
     Tuple, Type, cast, Dict
@@ -22,8 +23,15 @@ from scapy.plist import PacketList
 from scapy.sessions import DefaultSession
 from scapy.ansmachine import AnsweringMachine
 from scapy.config import conf
+import scapy.modules.six as six
 from scapy.supersocket import SuperSocket
 
+
+if six.PY34:
+    from abc import ABC, abstractmethod
+else:
+    from abc import ABCMeta, abstractmethod  # noqa: F401
+    ABC = ABCMeta('ABC', (), {})  # type: ignore
 
 __all__ = ["EcuState", "EcuStateModifier", "Ecu", "EcuResponse",
            "EcuSession", "EcuAnsweringMachine"]
@@ -38,8 +46,6 @@ class EcuState(object):
     def __init__(self, **kwargs):
         # type: (Any) -> None
         for k, v in kwargs.items():
-            if isinstance(v, GeneratorType):
-                v = list(v)
             self.__setattr__(k, v)
 
     def __getitem__(self, item):
@@ -52,32 +58,29 @@ class EcuState(object):
 
     def __repr__(self):
         # type: () -> str
-        return "".join(str(k) + str(v) for k, v in
-                       sorted(self.__dict__.items(), key=lambda t: t[0]))
+        return "".join([str(k) + str(v) for k, v in
+                        sorted(self.__dict__.items(), key=lambda t: t[0])])
 
     def __eq__(self, other):
         # type: (object) -> bool
         other = cast(EcuState, other)
-        if len(self.__dict__) != len(other.__dict__):
+        if self.__dict__.keys() != other.__dict__.keys():
             return False
-        try:
-            return all(self.__dict__[k] == other.__dict__[k]
-                       for k in self.__dict__.keys())
-        except KeyError:
-            return False
+        for k in self.__dict__.keys():
+            if self.__dict__[k] != other.__dict__[k]:
+                return False
+        return True
 
     def __contains__(self, item):
         # type: (EcuState) -> bool
         if not isinstance(item, EcuState):
             return False
-        if len(self.__dict__) != len(item.__dict__):
+        if not self.__dict__.keys() == item.__dict__.keys():
             return False
-        try:
-            return all(ov == sv or (hasattr(sv, "__iter__") and ov in sv)
-                       for sv, ov in
-                       zip(self.__dict__.values(), item.__dict__.values()))
-        except (KeyError, TypeError):
-            return False
+        return all(ov[1] == sv[1] or
+                   (hasattr(sv[1], "__iter__") and ov[1] in sv[1])
+                   for sv, ov in
+                   zip(self.__dict__.items(), item.__dict__.items()))
 
     def __ne__(self, other):
         # type: (object) -> bool
@@ -96,8 +99,12 @@ class EcuState(object):
 
         common = set(self.__dict__.keys()).intersection(
             set(other.__dict__.keys()))
+        if len(common) < len(self.__dict__.keys()):
+            raise TypeError("EcuStates with different elements can't be "
+                            "compared. Keys1: %s, Keys2: %s" %
+                            (self.__dict__.keys(), other.__dict__.keys()))
 
-        for k in sorted(common):
+        for k in sorted(self.__dict__.keys()):
             if not isinstance(other.__dict__[k], type(self.__dict__[k])):
                 raise TypeError(
                     "Can't compare %s with %s for the EcuState element %s" %
@@ -107,20 +114,7 @@ class EcuState(object):
             if self.__dict__[k] > other.__dict__[k]:
                 return False
 
-        if len(common) < len(self.__dict__):
-            self_diffs = set(self.__dict__.keys()).difference(
-                set(other.__dict__.keys()))
-            other_diffs = set(other.__dict__.keys()).difference(
-                set(self.__dict__.keys()))
-
-            for s, o in zip(self_diffs, other_diffs):
-                if s < o:
-                    return True
-
-            return False
-
-        raise TypeError("EcuStates should be identical. Something bad happen. "
-                        "self: %s other: %s" % (self.__dict__, other.__dict__))
+        raise TypeError("EcuStates should be identical. Something bad happen.")
 
     def __hash__(self):
         # type: () -> int
@@ -419,7 +413,7 @@ class EcuResponse:
 
     def supports_state(self, state):
         # type: (EcuState) -> bool
-        if self.__states is None or len(self.__states) == 0:
+        if self.__states is None:
             return True
         else:
             return any(s == state or state in s for s in self.__states)

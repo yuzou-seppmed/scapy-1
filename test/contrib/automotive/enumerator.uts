@@ -7,6 +7,8 @@
 from scapy.contrib.automotive.enumerator import *
 from scapy.contrib.automotive.uds import *
 from scapy.contrib.automotive.uds_scan import UDS_Enumerator
+import pickle
+import io
 
 from scapy.contrib.automotive.enumerator import _AutomotiveTestCaseScanResult
 
@@ -103,6 +105,15 @@ e._state_completed["s2"] = True
 
 assert e.completed
 
+= AutomotiveTestCase dump check
+import json
+
+dump = json.dumps(e.dump())
+d = json.loads(dump)
+assert len(d["states_completed"]) == 2
+assert len(d["data"]) == 4
+assert d["format_version"] == 0.3
+
 = AutomotiveTestCase show
 
 e.show(filtered=False)
@@ -138,6 +149,12 @@ class Scanner(AutomotiveTestCaseExecutor):
         # type: (int) -> bool
         raise NotImplementedError()
 
+scanner = Scanner(MockSock(), test_cases=[e])
+
+dump = json.dumps(scanner.dump(), sort_keys=True, indent=4)
+print(dump)
+d = json.loads(dump)
+print(d)
 
 + AutomotiveTestCaseExecutorConfiguration tests
 
@@ -157,12 +174,71 @@ config = tce.configuration  # type: AutomotiveTestCaseExecutorConfiguration
 assert config.delay_state_change == 42
 assert config.verbose == True
 assert len(config.test_cases) == 3
-assert len(config.TestCase1.items()) == 4
-assert len(config.TestCase2.items()) == 3
-assert len(config["TestCase1"].items()) == 4
-assert len(config.MyTestCase.items()) == 3
+assert len(config.TestCase1.items()) == 3
+assert len(config.TestCase2.items()) == 2
+assert len(config["TestCase1"].items()) == 3
+assert len(config.MyTestCase.items()) == 2
 assert config.TestCase1["verbose"] == True
 assert config.TestCase1["local_kwarg"] == 42
 assert config.TestCase1["global_arg"] == "Whatever"
 assert config.TestCase2["global_arg"] == "Whatever"
 assert config.MyTestCase["global_arg"] == "Whatever"
+
+= StagedAutomotiveTestCase
+
+
+
+
++ AutomotiveTestCaseExecutorConfiguration tests
+
+= Basic tests
+
+assert "1" in g.nodes
+assert "2" in g.nodes
+assert "3" in g.nodes
+assert "4" in g.nodes
+assert len(g.nodes) == 4
+assert g.dijkstra(g, "1", "4") == ["1", "2", "3", "4"]
+
+= Shortest path test
+
+g = Graph()
+g.add_edge("1", "1")
+g.add_edge("1", "2")
+g.add_edge("2", "3")
+g.add_edge("3", "4")
+g.add_edge("4", "4")
+
+assert g.dijkstra(g, "1", "4") == ["1", "2", "3", "4"]
+
+g.add_edge("1", "4")
+
+assert g.dijkstra(g, "1", "4") == ["1", "4"]
+
+g.add_edge("3", "5")
+g.add_edge("5", "6")
+
+print(g.dijkstra(g, "1", "6"))
+
+assert g.dijkstra(g, "1", "6") == ["1", "2", "3", "5", "6"] or \
+       g.dijkstra(g, "1", "6") == ['1', '4', '3', '5', '6']
+
+g.add_edge("2", "5")
+
+print(g.dijkstra(g, "1", "6"))
+
+assert g.dijkstra(g, "1", "6") == ["1", "2", "5", "6"]
+
+class TestCase2(MyTestCase):
+    pass
+
+assert g.dijkstra(g, "1", "6") == ["1", "4", "6"]
+
+= graph pickle
+
+f = io.BytesIO()
+
+pickle.dump(g, f)
+unp = pickle.loads(f.getvalue())
+
+assert unp.dijkstra(g, "1", "6") == ["1", "4", "6"]
