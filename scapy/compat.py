@@ -34,6 +34,8 @@ __all__ = [
     'Iterator',
     'List',
     'Literal',
+    'NamedTuple',
+    'NewType',
     'NoReturn',
     'Optional',
     'Pattern',
@@ -127,6 +129,8 @@ if not FAKE_TYPING:
         Iterator,
         IO,
         List,
+        NamedTuple,
+        NewType,
         NoReturn,
         Optional,
         Pattern,
@@ -156,6 +160,8 @@ else:
     Iterator = _FakeType("Iterator")  # type: ignore
     IO = _FakeType("IO")  # type: ignore
     List = _FakeType("List", list)  # type: ignore
+    NamedTuple = _FakeType("NamedTuple", collections.namedtuple)  # type: ignore  # noqa: E501
+    NewType = _FakeType("NewType")
     NoReturn = _FakeType("NoReturn")  # type: ignore
     Optional = _FakeType("Optional")
     Pattern = _FakeType("Pattern")  # type: ignore
@@ -171,13 +177,6 @@ else:
         pass
 
     overload = lambda x: x
-
-
-# Broken < Python 3.7
-if sys.version_info >= (3, 7):
-    from typing import NamedTuple
-else:
-    NamedTuple = lambda name, params: collections.namedtuple(name, list(x[0] for x in params))  # noqa: E501
 
 # Python 3.8 Only
 if sys.version_info >= (3, 8):
