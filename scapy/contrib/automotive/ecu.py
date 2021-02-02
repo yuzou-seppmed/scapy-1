@@ -301,10 +301,6 @@ class EcuSession(DefaultSession):
     def on_packet_received(self, pkt):
         if not pkt:
             return
-        if isinstance(pkt, list):
-            for p in pkt:
-                EcuSession.on_packet_received(self, p)
-            return
         self.ecu.update(pkt)
         DefaultSession.on_packet_received(self, pkt)
 
