@@ -71,12 +71,19 @@ class AutomotiveTestCaseABC(ABC):
     def execute(self, socket, state, **kwargs):
         # type: (_SocketUnion, EcuState, Any) -> None
         """
+<<<<<<< HEAD
         Executes this TestCase for a given state
 
         :param socket: Socket object with the connection to a DUT
         :param state: Current state of the DUT
         :param kwargs: Local configuration of the TestCasesExecutor
         :return:
+=======
+        Executes TestCase
+        :param socket: Socket object with the connection to a DUT
+        :param state: Current state of the DUT
+        :param kwargs: Local configuration of the TestCasesExecutor
+>>>>>>> complete documentation of AutomotiveTestCaseABC
         """
         raise NotImplementedError()
 
@@ -98,9 +105,15 @@ class AutomotiveTestCaseABC(ABC):
         Shows results of TestCase
         :param dump: If True, the results will be returned; If False, the results will be printed.
         :param filtered: If True, the negative responses will be filtered dynamically.
+<<<<<<< HEAD
         :param verbose: If True, additional information will be provided.
         :return: test results of TestCase if parameter ``dump`` is True, else ``None``
         """  # noqa: E501
+=======
+        :param verbose: If True, the state information will be presented in a table.
+        :return: test results of TestCase if parameter ``dump`` is True
+        """
+>>>>>>> complete documentation of AutomotiveTestCaseABC
         raise NotImplementedError()
 
     @property
