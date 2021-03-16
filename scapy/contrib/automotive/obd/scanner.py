@@ -15,8 +15,8 @@ from scapy.config import conf
 from scapy.packet import Packet
 from scapy.themes import BlackAndWhite
 
-from scapy.contrib.automotive.scanner.test_case import ServiceEnumerator, \
-    AutomotiveTestCaseABC
+from scapy.contrib.automotive.scanner.enumerator import ServiceEnumerator
+from scapy.contrib.automotive.scanner.test_case import AutomotiveTestCaseABC
 from scapy.contrib.automotive.scanner.executor import AutomotiveTestCaseExecutor  # noqa: E501
 
 
