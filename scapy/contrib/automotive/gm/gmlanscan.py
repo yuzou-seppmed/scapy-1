@@ -24,7 +24,7 @@ from scapy.error import Scapy_Exception, log_interactive
 from scapy.contrib.automotive.gm.gmlanutils import GMLAN_GetSecurityAccess, \
     GMLAN_InitDiagnostics, GMLAN_TesterPresentSender, GMLAN_RequestDownload
 
-from scapy.contrib.automotive.scanner.test_case import AutomotiveTestCase, \
+from scapy.contrib.automotive.scanner.test_case import ServiceEnumerator, \
     AutomotiveTestCaseABC, StateGenerator, _SocketUnion, _TransitionTuple, \
     _AutomotiveTestCaseScanResult
 from scapy.contrib.automotive.scanner.configuration import AutomotiveTestCaseExecutorConfiguration  # noqa: E501
@@ -44,7 +44,7 @@ __all__ = ["GMLAN_Scanner", "GMLAN_ServiceEnumerator", "GMLAN_RDBIEnumerator",
            "GMLAN_DCEnumerator"]
 
 
-class GMLAN_Enumerator(AutomotiveTestCase):
+class GMLAN_Enumerator(ServiceEnumerator):
 
     @staticmethod
     def _get_negative_response_code(resp):
@@ -280,6 +280,7 @@ class GMLAN_SA1Enumerator(GMLAN_Enumerator, StateGenerator):
     def enter_state_with_tp(sock, conf, kwargs):
         # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration, Dict[str, Any]) -> bool  # noqa: E501
         res = GMLAN_TPEnumerator.enter(sock, conf, kwargs)
+        # TODO: Cleanup argument handling
         kf = conf[GMLAN_SA1Enumerator.__name__].get("keyfunction")
         vb = conf[GMLAN_SA1Enumerator.__name__].get("verbose", True)
         tm = conf[GMLAN_SA1Enumerator.__name__].get("timeout", 15)

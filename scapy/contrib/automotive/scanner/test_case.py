@@ -3,7 +3,7 @@
 # Copyright (C) Nils Weiss <nils@we155.de>
 # This program is published under a GPLv2 license
 
-# scapy.contrib.description = AutomotiveTestCase definitions
+# scapy.contrib.description = ServiceEnumerator definitions
 # scapy.contrib.status = library
 
 
@@ -34,7 +34,7 @@ else:
 
 
 if not FAKE_TYPING:
-    # Definition outside the class AutomotiveTestCase to allow pickling
+    # Definition outside the class ServiceEnumerator to allow pickling
     _AutomotiveTestCaseScanResult = NamedTuple(
         "_AutomotiveTestCaseScanResult",
         [("state", EcuState),
@@ -53,7 +53,7 @@ if not FAKE_TYPING:
 
 else:
     from collections import namedtuple
-    # Definition outside the class AutomotiveTestCase to allow pickling
+    # Definition outside the class ServiceEnumerator to allow pickling
     _AutomotiveTestCaseScanResult = namedtuple(  # type: ignore
         "_AutomotiveTestCaseScanResult",
         ["state", "req", "resp", "req_ts", "resp_ts"])
@@ -128,10 +128,13 @@ class AutomotiveTestCaseABC(ABC):
         # type: (bool, bool, bool) -> Optional[str]
         """
         Shows results of TestCase
-        :param dump: If True, the results will be returned; If False, the results will be printed.
-        :param filtered: If True, the negative responses will be filtered dynamically.
-        :param verbose: If True, the state information will be presented in a table.
-        :return: test results of TestCase if parameter ``dump`` is True
+        :param dump: If True, the results will be returned; If False,
+                     the results will be printed.
+        :param filtered: If True, the negative responses will be
+                         filtered dynamically.
+        :param verbose: If True, additional information will be provided.
+        :return: test results of TestCase if parameter ``dump`` is True,
+                 else ``None``
         """
         raise NotImplementedError()
 
@@ -157,9 +160,81 @@ class AutomotiveTestCaseABC(ABC):
 
 
 class AutomotiveTestCase(AutomotiveTestCaseABC):
-    """ Base class for Enumerators"""
+    """ Base class for TestCases"""
 
     _description = "About my results"
+
+    def __init__(self):
+        # type: () -> None
+        self._state_completed = defaultdict(bool)  # type: Dict[EcuState, bool]
+
+    def has_completed(self, state):
+        # type: (EcuState) -> bool
+        return self._state_completed[state]
+
+    @property
+    def completed(self):
+        # type: () -> bool
+        return all(v for _, v in self._state_completed.items())
+
+    @property
+    def scanned_states(self):
+        # type: () -> Set[EcuState]
+        """
+        Helper function to get all sacnned states in results
+        :return: all scanned states
+        """
+        return set(self._state_completed.keys())
+
+    def pre_execute(self, socket, state, global_configuration):
+        # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
+        pass
+
+    def execute(self, socket, state, **kwargs):
+        # type: (_SocketUnion, EcuState, Any) -> None
+        raise NotImplementedError()
+
+    def post_execute(self, socket, state, global_configuration):
+        # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
+        pass
+
+    def _show_header(self, dump=False):
+        # type: (bool) -> Optional[str]
+        s = "\n\n" + "=" * (len(self._description) + 10) + "\n"
+        s += " " * 5 + self._description + "\n"
+        s += "-" * (len(self._description) + 10) + "\n"
+
+        if dump:
+            return s + "\n"
+        else:
+            print(s)
+            return None
+
+    def _show_state_information(self, dump):
+        # type: (bool) -> Optional[str]
+        completed = [(state, self._state_completed[state])
+                     for state in self.scanned_states]
+        return make_lined_table(
+            completed, lambda tup: ("Scan state completed", tup[0], tup[1]),
+            dump=dump)
+
+    def show(self, dump=False, filtered=True, verbose=False):
+        # type: (bool, bool, bool) -> Optional[str]
+
+        s = self._show_header(dump) or ""
+
+        if verbose:
+            s += self._show_state_information(dump) or ""
+
+        if dump:
+            return s + "\n"
+        else:
+            print(s)
+            return None
+
+
+class ServiceEnumerator(AutomotiveTestCase):
+    """ Base class for Enumerators"""
 
     @staticmethod
     @abstractmethod
@@ -192,15 +267,15 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
 
     def __init__(self):
         # type: () -> None
+        super(ServiceEnumerator, self).__init__()
         self.__result_packets = OrderedDict()  # type: Dict[bytes, Packet]
         self._results = list()  # type: List[_AutomotiveTestCaseScanResult]
-        self._state_completed = defaultdict(bool)  # type: Dict[EcuState, bool]
         self._request_iterators = dict()  # type: Dict[EcuState, Iterable[Packet]]  # noqa: E501
         self._retry_pkt = None  # type: Optional[Union[Packet, Iterable[Packet]]]  # noqa: E501
         self._negative_response_blacklist = [0x10, 0x11]  # type: List[int]
 
     def __reduce__(self):  # type: ignore
-        f, t, d = super(AutomotiveTestCase, self).__reduce__()  # type: ignore
+        f, t, d = super(ServiceEnumerator, self).__reduce__()  # type: ignore
         try:
             del d["_request_iterators"]
         except KeyError:
@@ -211,10 +286,6 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
         except KeyError:
             pass
         return f, t, d
-
-    def has_completed(self, state):
-        # type: (EcuState) -> bool
-        return self._state_completed[state]
 
     @property
     def negative_response_blacklist(self):
@@ -227,7 +298,7 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
         if len(self._results):
             return all([self.has_completed(s) for s in self.scanned_states])
         else:
-            return all(v for _, v in self._state_completed.items())
+            return super(ServiceEnumerator, self).completed
 
     def _store_result(self, state, req, res):
         # type: (EcuState, Packet, Optional[Packet]) -> None
@@ -267,10 +338,6 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
         # type: (EcuState, Optional[Dict[str, Any]]) -> Iterable[Packet]
         return self.__get_retry_iterator() or \
             self.__get_initial_request_iterator(state, **kwargs)
-
-    def pre_execute(self, socket, state, global_configuration):
-        # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
-        pass
 
     def execute(self, socket, state, **kwargs):
         # type: (_SocketUnion, EcuState, Any) -> None
@@ -316,10 +383,6 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
         self._state_completed[state] = True
         log_interactive.debug("[i] States completed %s",
                               repr(self._state_completed))
-
-    def post_execute(self, socket, state, global_configuration):
-        # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
-        pass
 
     def _evaluate_response(self, state, request, response, **kwargs):
         # type: (EcuState, Packet, Optional[Packet], Optional[Dict[str, Any]]) -> bool  # noqa: E501
@@ -429,7 +492,12 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
         # type: (bool) -> Union[str, None]
         stats = self._compute_statistics()
 
-        s = "Statistics per state\n"
+        s = "%d requests were sent, %d answered, %d unanswered" % \
+            (len(self._results),
+             len(self.results_with_response),
+             len(self.results_without_response)) + "\n"
+
+        s += "Statistics per state\n"
         s += make_lined_table(stats, lambda x: x, dump=True, sortx=str,
                               sorty=str) or ""
 
@@ -545,24 +613,6 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
             print(s)
             return None
 
-    def _show_header(self, dump=False):
-        # type: (bool) -> Optional[str]
-        s = "\n\n" + "=" * (len(self._description) + 10) + "\n"
-        s += " " * 5 + self._description + "\n"
-        s += "-" * (len(self._description) + 10) + "\n"
-
-        s += "%d requests were sent, %d answered, %d unanswered" % \
-             (len(self._results),
-              len(self.results_with_negative_response) +
-              len(self.results_with_positive_response),
-              len(self.results_without_response)) + "\n"
-
-        if dump:
-            return s + "\n"
-        else:
-            print(s)
-            return None
-
     def _show_negative_response_information(self, dump, filtered=True):
         # type: (bool, bool) -> Optional[str]
         s = "%d negative responses were received\n" % \
@@ -585,14 +635,6 @@ class AutomotiveTestCase(AutomotiveTestCaseABC):
         else:
             print(s)
             return None
-
-    def _show_state_information(self, dump):
-        # type: (bool) -> Optional[str]
-        completed = [(state, self._state_completed[state])
-                     for state in self.scanned_states]
-        return make_lined_table(
-            completed, lambda tup: ("Scan state completed", tup[0], tup[1]),
-            dump=dump)
 
     def _show_results_information(self, dump, filtered):
         # type: (bool, bool) -> Optional[str]
@@ -673,7 +715,7 @@ class StateGenerator(ABC):
             raise TypeError("Only AutomotiveTestCaseABC instances "
                             "can be a StateGenerator")
         try:
-            state, req, resp, _, _ = cast(AutomotiveTestCase, self).results[-1]
+            state, req, resp, _, _ = cast(ServiceEnumerator, self).results[-1]
         except IndexError:
             return None
 

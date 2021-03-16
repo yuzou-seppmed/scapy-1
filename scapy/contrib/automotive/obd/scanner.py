@@ -15,12 +15,12 @@ from scapy.config import conf
 from scapy.packet import Packet
 from scapy.themes import BlackAndWhite
 
-from scapy.contrib.automotive.scanner.test_case import AutomotiveTestCase, \
+from scapy.contrib.automotive.scanner.test_case import ServiceEnumerator, \
     AutomotiveTestCaseABC
 from scapy.contrib.automotive.scanner.executor import AutomotiveTestCaseExecutor  # noqa: E501
 
 
-class OBD_Enumerator(AutomotiveTestCase):
+class OBD_Enumerator(ServiceEnumerator):
     @staticmethod
     def _get_negative_response_code(resp):
         # type: (Packet) -> int
@@ -38,7 +38,7 @@ class OBD_Enumerator(AutomotiveTestCase):
 
     @property
     def filtered_results(self):
-        # type: () -> List[AutomotiveTestCase.FilteredScanResult]
+        # type: () -> List[ServiceEnumerator.FilteredScanResult]
         return self.results_with_positive_response
 
 
@@ -218,7 +218,7 @@ class OBD_Scanner(AutomotiveTestCaseExecutor):
 
     @property
     def default_test_case_clss(self):
-        # type: () -> List[Type[AutomotiveTestCase]]
+        # type: () -> List[Type[ServiceEnumerator]]
         return [OBD_S01_Enumerator, OBD_S02_Enumerator, OBD_S06_Enumerator,
                 OBD_S08_Enumerator, OBD_S09_Enumerator, OBD_S03_Enumerator,
                 OBD_S07_Enumerator, OBD_S0A_Enumerator]

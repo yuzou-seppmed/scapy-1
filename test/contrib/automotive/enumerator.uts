@@ -4,13 +4,13 @@
 
 = Load contribution layer
 
-from scapy.contrib.automotive.scanner.test_case import _AutomotiveTestCaseScanResult, AutomotiveTestCase
+from scapy.contrib.automotive.scanner.test_case import _AutomotiveTestCaseScanResult, ServiceEnumerator
 from scapy.contrib.automotive.scanner.executor import AutomotiveTestCaseExecutor
 from scapy.contrib.automotive.uds import *
 from scapy.contrib.automotive.uds_scan import UDS_Enumerator
 
 + Basic checks
-= AutomotiveTestCase basecls checks
+= ServiceEnumerator basecls checks
 
 pkts = [
     _AutomotiveTestCaseScanResult("s1", UDS(b"\x20abcd"), UDS(b"\x60abcd"), 1.0, 1.9),
@@ -19,7 +19,7 @@ pkts = [
     _AutomotiveTestCaseScanResult("s2", UDS(b"\x21abcd"), UDS(b"\x7fa\x10cd"), 4.0, 4.5),
 ]
 
-class MyTestCase(AutomotiveTestCase):
+class MyTestCase(ServiceEnumerator):
     def _get_initial_requests(self, **kwargs):
         # type: (Any) -> Iterable[Packet]
         raise NotImplementedError("Overwrite this method")
@@ -54,18 +54,18 @@ for p in pkts:
     e._store_result(p.state, p.req, p.resp)
 
 
-= AutomotiveTestCase not completed check
+= ServiceEnumerator not completed check
 
 assert e.completed == False
 
-= AutomotiveTestCase completed
+= ServiceEnumerator completed
 
 e._state_completed["s1"] = True
 e._state_completed["s2"] = True
 
 assert e.completed
 
-= AutomotiveTestCase stats check
+= ServiceEnumerator stats check
 
 stat_list = e._compute_statistics()
 
@@ -79,18 +79,18 @@ assert stats["answertime_min"] == '0.1'
 assert stats["answertime_avg"] == '0.5'
 assert stats["num_negative_resps"] == '2'
 
-= AutomotiveTestCase scanned states
+= ServiceEnumerator scanned states
 
 assert len(e.scanned_states) == 2
 assert {"s1", "s2"} == e.scanned_states
 
-= AutomotiveTestCase scanned results
+= ServiceEnumerator scanned results
 
 assert len(e.results_with_positive_response) == 1
 assert len(e.results_with_negative_response) == 2
 assert len(e.results_without_response) == 1
 
-= AutomotiveTestCase get_label
+= ServiceEnumerator get_label
 
 assert e._get_label(pkts[0].resp) == "PR: PositiveResponse"
 assert e._get_label(pkts[0].resp, lambda _: "positive") == "positive"
@@ -99,7 +99,7 @@ assert e._get_label(pkts[1].resp) == "Timeout"
 assert e._get_label(pkts[2].resp) == "NR: 98"
 assert e._get_label(pkts[3].resp) == "NR: generalReject"
 
-= AutomotiveTestCase show
+= ServiceEnumerator show
 
 e.show(filtered=False)
 
@@ -113,14 +113,14 @@ assert "s2" in dump
 assert "0x20" in dump
 assert "0x21" in dump
 
-= AutomotiveTestCase filtered results before show
+= ServiceEnumerator filtered results before show
 
 print(len(e.filtered_results))
 assert len(e.filtered_results) == 2
 assert e.filtered_results[0] == pkts[0]
 assert e.filtered_results[1] == pkts[2]
 
-= AutomotiveTestCase show filtered
+= ServiceEnumerator show filtered
 
 e.show(filtered=True)
 
@@ -136,13 +136,13 @@ assert "0x20" in dump
 assert "0x21" in dump
 assert "The following negative response codes are blacklisted: ['serviceNotSupported']" in dump
 
-= AutomotiveTestCase filtered results after show
+= ServiceEnumerator filtered results after show
 
 assert len(e.filtered_results) == 3
 assert e.filtered_results[0] == pkts[0]
 assert e.filtered_results[1] == pkts[2]
 
-= AutomotiveTestCase supported responses
+= ServiceEnumerator supported responses
 
 assert len(e.supported_responses) == 3
 

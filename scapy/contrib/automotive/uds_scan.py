@@ -24,7 +24,7 @@ from scapy.contrib.automotive.uds import UDS, UDS_NR, UDS_DSC, UDS_TP, \
     UDS_TesterPresentSender, UDS_CC, UDS_RDBPI, UDS_RD, UDS_TD
 
 from scapy.contrib.automotive.ecu import EcuState
-from scapy.contrib.automotive.scanner.test_case import AutomotiveTestCase, \
+from scapy.contrib.automotive.scanner.test_case import ServiceEnumerator, \
     AutomotiveTestCaseABC, StateGenerator, _SocketUnion, _TransitionTuple, \
     _AutomotiveTestCaseScanResult, _AutomotiveTestCaseFilteredScanResult
 from scapy.contrib.automotive.scanner.configuration import AutomotiveTestCaseExecutorConfiguration  # noqa: E501
@@ -46,7 +46,7 @@ _PointOfInterest = NamedTuple("_PointOfInterest", [
     ("memoryAddressLen", int)])
 
 
-class UDS_Enumerator(AutomotiveTestCase):
+class UDS_Enumerator(ServiceEnumerator):
     @staticmethod
     def _get_negative_response_code(resp):
         # type: (Packet) -> int
