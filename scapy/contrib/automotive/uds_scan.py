@@ -459,7 +459,7 @@ class UDS_SAEnumerator(UDS_Enumerator):
 
     def pre_execute(self, socket, state, global_configuration):
         # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
-        if super(UDS_SAEnumerator, self)._retry_pkt is not None:
+        if cast(ServiceEnumerator, self)._retry_pkt is not None:
             # this is a retry execute. Wait much longer than usual because
             # a required time delay not expired could have been received
             # on the previous attempt
@@ -480,7 +480,7 @@ class UDS_SAEnumerator(UDS_Enumerator):
         if response.service == 0x7f and \
                 response.negativeResponseCode in [0x24, 0x37]:
             # requiredTimeDelayNotExpired or requestSequenceError
-            if super(UDS_SAEnumerator, self)._retry_pkt is None:
+            if cast(ServiceEnumerator, self)._retry_pkt is None:
                 # This was no retry since the retry_pkt is None
                 self._retry_pkt = request
                 log_interactive.debug(
