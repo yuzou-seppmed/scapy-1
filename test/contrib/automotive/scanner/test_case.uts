@@ -13,7 +13,8 @@ from scapy.contrib.automotive.ecu import EcuState
 
 class MyTestCase(AutomotiveTestCase):
     _description = "MyTestCase"
-
+    def supported_responses(self):
+        return []
 
 = Create instance of test class
 

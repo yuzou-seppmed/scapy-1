@@ -14,19 +14,24 @@ from scapy.contrib.automotive.scanner.staged_test_case import StagedAutomotiveTe
 
 class MyTestCase1(AutomotiveTestCase):
     _description = "MyTestCase1"
+    def supported_responses(self):
+        return []
 
 
 class MyTestCase2(AutomotiveTestCase):
     _description = "MyTestCase2"
-
+    def supported_responses(self):
+        return []
 
 class MyTestCase3(AutomotiveTestCase):
     _description = "MyTestCase3"
-
+    def supported_responses(self):
+        return []
 
 class MyTestCase4(AutomotiveTestCase):
     _description = "MyTestCase4"
-
+    def supported_responses(self):
+        return []
 
 = creation of config with classes
     

@@ -14,11 +14,13 @@ from scapy.contrib.automotive.scanner.staged_test_case import StagedAutomotiveTe
 
 class MyTestCase1(AutomotiveTestCase):
     _description = "MyTestCase1"
-
+    def supported_responses(self):
+        return []
 
 class MyTestCase2(AutomotiveTestCase):
     _description = "MyTestCase2"
-
+    def supported_responses(self):
+        return []
 
 = Create instance of stage test
 
@@ -121,7 +123,8 @@ class MyTestCase2(AutomotiveTestCase):
         global test_storage_tc2
         print(global_configuration)
         test_storage_tc2 = global_configuration
-
+    def supported_responses(self):
+        return []
 
 test_storage_tc3 = None
 
@@ -131,7 +134,8 @@ class MyTestCase3(AutomotiveTestCase):
         global test_storage_tc3
         print(global_configuration)
         test_storage_tc3 = global_configuration
-
+    def supported_responses(self):
+        return []
 
 def con1(tc1, tc2):
     assert isinstance(tc1, MyTestCase1)
