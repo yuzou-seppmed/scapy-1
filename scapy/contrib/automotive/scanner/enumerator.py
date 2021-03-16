@@ -189,7 +189,7 @@ class ServiceEnumerator(AutomotiveTestCase):
 
             try:
                 res = socket.sr1(req, timeout=timeout, verbose=False)
-            except (OSError, ValueError, Scapy_Exception, BrokenPipeError) as e:  # noqa: E501
+            except (OSError, ValueError, Scapy_Exception) as e:
                 res = None
                 if self._retry_pkt is None:
                     log_interactive.debug(

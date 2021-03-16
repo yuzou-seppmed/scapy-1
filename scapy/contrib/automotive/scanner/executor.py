@@ -197,7 +197,7 @@ class AutomotiveTestCaseExecutor(ABC):
                         self.execute_test_case(test_case)
                         self.cleanup_state()
                     test_case_executed = True
-                except (OSError, ValueError, Scapy_Exception, BrokenPipeError) as e:  # noqa: E501
+                except (OSError, ValueError, Scapy_Exception) as e:
                     log_interactive.critical("[-] Exception: %s", e)
                     if self.configuration.debug:
                         raise e
@@ -260,8 +260,7 @@ class AutomotiveTestCaseExecutor(ABC):
                 if not result:
                     log_interactive.info(
                         "[-] Cleanup function %s failed", repr(f))
-            except (OSError, ValueError, Scapy_Exception,
-                    BrokenPipeError) as e:
+            except (OSError, ValueError, Scapy_Exception) as e:
                 log_interactive.critical("[!] Exception during cleanup: %s", e)
 
         self.cleanup_functions = list()
