@@ -23,7 +23,7 @@ load_contrib("automotive.uds", globals_dict=globals())
 load_contrib("automotive.uds_scan", globals_dict=globals())
 load_contrib("automotive.ecu", globals_dict=globals())
 
-from scapy.contrib.automotive.scanner.test_case import _AutomotiveTestCaseScanResult
+from scapy.contrib.automotive.scanner.enumerator import _AutomotiveTestCaseScanResult
 from scapy.contrib.automotive.scanner.graph import Graph
 from scapy.contrib.automotive.scanner.staged_test_case import StagedAutomotiveTestCase
 

@@ -4,7 +4,7 @@
 
 = Load contribution layer
 
-from scapy.contrib.automotive.scanner.test_case import _AutomotiveTestCaseScanResult, ServiceEnumerator
+from scapy.contrib.automotive.scanner.enumerator import _AutomotiveTestCaseScanResult, ServiceEnumerator
 from scapy.contrib.automotive.scanner.executor import AutomotiveTestCaseExecutor
 from scapy.contrib.automotive.uds import *
 from scapy.contrib.automotive.uds_scan import UDS_Enumerator
