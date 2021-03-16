@@ -24,9 +24,10 @@ from scapy.error import Scapy_Exception, log_interactive
 from scapy.contrib.automotive.gm.gmlanutils import GMLAN_GetSecurityAccess, \
     GMLAN_InitDiagnostics, GMLAN_TesterPresentSender, GMLAN_RequestDownload
 
-from scapy.contrib.automotive.scanner.test_case import ServiceEnumerator, \
-    AutomotiveTestCaseABC, StateGenerator, _SocketUnion, _TransitionTuple, \
-    _AutomotiveTestCaseScanResult
+from scapy.contrib.automotive.scanner.test_case import AutomotiveTestCaseABC, \
+    _SocketUnion, _TransitionTuple
+from scapy.contrib.automotive.scanner.enumerator import ServiceEnumerator, \
+    _AutomotiveTestCaseScanResult, StateGeneratingServiceEnumerator
 from scapy.contrib.automotive.scanner.configuration import AutomotiveTestCaseExecutorConfiguration  # noqa: E501
 from scapy.contrib.automotive.scanner.graph import _Edge
 from scapy.contrib.automotive.scanner.staged_test_case import StagedAutomotiveTestCase  # noqa: E501
@@ -90,7 +91,7 @@ class GMLAN_ServiceEnumerator(GMLAN_Enumerator):
                 label)
 
 
-class GMLAN_TPEnumerator(GMLAN_Enumerator, StateGenerator):
+class GMLAN_TPEnumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
     _description = "TesterPresent supported"
 
     def _get_initial_requests(self, **kwargs):
@@ -128,7 +129,7 @@ class GMLAN_TPEnumerator(GMLAN_Enumerator, StateGenerator):
         return state, "TesterPresent:", label
 
 
-class GMLAN_IDOEnumerator(GMLAN_Enumerator, StateGenerator):
+class GMLAN_IDOEnumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
     _description = "InitiateDiagnosticOperation supported"
 
     def _get_initial_requests(self, **kwargs):
@@ -151,7 +152,7 @@ class GMLAN_IDOEnumerator(GMLAN_Enumerator, StateGenerator):
             state, new_state = edge
             if state == new_state:
                 return None
-            new_state.tp = 1   # type: ignore
+            new_state.tp = 1
             return state, new_state
         return None
 
@@ -232,7 +233,7 @@ class GMLAN_WDBISelectiveEnumerator(StagedAutomotiveTestCase):
             [None, self.__connector_rdbi_to_wdbi])
 
 
-class GMLAN_SA1Enumerator(GMLAN_Enumerator, StateGenerator):
+class GMLAN_SA1Enumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
     _description = "SecurityAccess level 1 supported"
 
     def _get_initial_requests(self, **kwargs):
@@ -272,7 +273,7 @@ class GMLAN_SA1Enumerator(GMLAN_Enumerator, StateGenerator):
             state, new_state = edge
             if state == new_state:
                 return None
-            new_state.tp = 1   # type: ignore
+            new_state.tp = 1
             return state, new_state
         return None
 
@@ -324,7 +325,7 @@ class GMLAN_DNCEnumerator(GMLAN_Enumerator):
         return state, "DisableNormalCommunication:", label
 
 
-class GMLAN_RDEnumerator(GMLAN_Enumerator, StateGenerator):
+class GMLAN_RDEnumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
     _description = "RequestDownload supported"
 
     def _get_initial_requests(self, **kwargs):
@@ -336,7 +337,7 @@ class GMLAN_RDEnumerator(GMLAN_Enumerator, StateGenerator):
         edge = super(GMLAN_RDEnumerator, self).get_new_edge(socket, config)
         if edge:
             state, new_state = edge
-            new_state.tp = 1  # type: ignore
+            new_state.tp = 1
             return state, new_state
         return None
 
@@ -359,7 +360,7 @@ class GMLAN_RDEnumerator(GMLAN_Enumerator, StateGenerator):
         return state, "RequestDownload:", label
 
 
-class GMLAN_PMEnumerator(GMLAN_Enumerator, StateGenerator):
+class GMLAN_PMEnumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
     _description = "ProgrammingMode supported"
 
     def _get_initial_requests(self, **kwargs):
@@ -388,7 +389,7 @@ class GMLAN_PMEnumerator(GMLAN_Enumerator, StateGenerator):
             state, new_state = edge
             if state == new_state:
                 return None
-            new_state.tp = 1  # type: ignore
+            new_state.tp = 1
             return state, new_state
         return None
 

@@ -69,9 +69,9 @@ class AutomotiveTestCaseExecutorConfiguration(object):
             [i for sublist in [e.test_cases for e in self.stages]
              for i in sublist]
 
-        self.test_case_clss = [
+        self.test_case_clss = set([
             case.__class__ for case in set(self.staged_test_cases +
-                                           self.test_cases)]
+                                           self.test_cases)])
 
         for cls in self.test_case_clss:
             kwargs_name = cls.__name__ + "_kwargs"

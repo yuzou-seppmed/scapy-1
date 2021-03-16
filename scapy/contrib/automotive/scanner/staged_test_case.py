@@ -27,6 +27,8 @@ _TestCaseConnectorCallable = Callable[[AutomotiveTestCaseABC, AutomotiveTestCase
 
 
 class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGenerator):  # noqa: E501
+    __delay_stages = 5
+
     def __init__(self, test_cases, connectors=None):
         # type: (List[AutomotiveTestCaseABC], Optional[List[Optional[_TestCaseConnectorCallable]]]) -> None  # noqa: E501
         super(StagedAutomotiveTestCase, self).__init__()
@@ -110,18 +112,18 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
             self.__completion_delay = 0
             return False
 
-        # current test_case is fully completed
-        if self.__stage_index == len(self.__test_cases) - 1:
-            # this test_case was the last test_case... nothing to do
-            return True
-
         # current stage is finished. We have to increase the stage
-        if self.__completion_delay < 5:
+        if self.__completion_delay < StagedAutomotiveTestCase.__delay_stages:
             # First we wait five more iteration of the executor
             # Maybe one more execution reveals new states of other
             # test_cases
             self.__completion_delay += 1
             return False
+
+        # current test_case is fully completed
+        elif self.__stage_index == len(self.__test_cases) - 1:
+            # this test_case was the last test_case... nothing to do
+            return True
 
         else:
             # We waited more iterations and no new state appeared,
@@ -141,6 +143,8 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
                 test_case_cls.__name__]
         except KeyError:
             self.__current_kwargs = dict()
+            global_configuration[test_case_cls.__name__] = \
+                self.__current_kwargs
 
         if callable(self.current_connector) and self.__stage_index > 0:
             if self.previous_test_case:
@@ -195,7 +199,8 @@ class StagedAutomotiveTestCase(AutomotiveTestCaseABC, TestCaseGenerator, StateGe
     @property
     def completed(self):
         # type: () -> bool
-        return all(e.completed for e in self.__test_cases)
+        return all(e.completed for e in self.__test_cases) and \
+            self.__completion_delay >= StagedAutomotiveTestCase.__delay_stages
 
     @property
     def supported_responses(self):

@@ -24,9 +24,11 @@ from scapy.contrib.automotive.uds import UDS, UDS_NR, UDS_DSC, UDS_TP, \
     UDS_TesterPresentSender, UDS_CC, UDS_RDBPI, UDS_RD, UDS_TD
 
 from scapy.contrib.automotive.ecu import EcuState
-from scapy.contrib.automotive.scanner.test_case import ServiceEnumerator, \
-    AutomotiveTestCaseABC, StateGenerator, _SocketUnion, _TransitionTuple, \
-    _AutomotiveTestCaseScanResult, _AutomotiveTestCaseFilteredScanResult
+from scapy.contrib.automotive.scanner.enumerator import ServiceEnumerator, \
+    _AutomotiveTestCaseScanResult, _AutomotiveTestCaseFilteredScanResult, \
+    StateGeneratingServiceEnumerator
+from scapy.contrib.automotive.scanner.test_case import AutomotiveTestCaseABC, \
+    _SocketUnion, _TransitionTuple
 from scapy.contrib.automotive.scanner.configuration import AutomotiveTestCaseExecutorConfiguration  # noqa: E501
 from scapy.contrib.automotive.scanner.graph import _Edge
 from scapy.contrib.automotive.scanner.staged_test_case import StagedAutomotiveTestCase  # noqa: E501
@@ -70,7 +72,7 @@ class UDS_Enumerator(ServiceEnumerator):
         return response.sprintf("NR: %UDS_NR.negativeResponseCode%")
 
 
-class UDS_DSCEnumerator(UDS_Enumerator, StateGenerator):
+class UDS_DSCEnumerator(StateGeneratingServiceEnumerator, UDS_Enumerator):
     _description = "Available sessions"
 
     def _get_initial_requests(self, **kwargs):
@@ -125,7 +127,7 @@ class UDS_DSCEnumerator(UDS_Enumerator, StateGenerator):
         if edge:
             state, new_state = edge
             # Force TesterPresent if session is changed
-            new_state.tp = 1   # type: ignore
+            new_state.tp = 1
             return state, new_state
         return None
 
@@ -151,7 +153,7 @@ class UDS_DSCEnumerator(UDS_Enumerator, StateGenerator):
             UDS_TPEnumerator.cleanup
 
 
-class UDS_TPEnumerator(UDS_Enumerator, StateGenerator):
+class UDS_TPEnumerator(UDS_Enumerator, StateGeneratingServiceEnumerator):
     _description = "TesterPresent supported"
 
     def _get_initial_requests(self, **kwargs):
@@ -457,7 +459,7 @@ class UDS_SAEnumerator(UDS_Enumerator):
 
     def pre_execute(self, socket, state, global_configuration):
         # type: (_SocketUnion, EcuState, AutomotiveTestCaseExecutorConfiguration) -> None  # noqa: E501
-        if self._retry_pkt is not None:
+        if super(UDS_SAEnumerator, self)._retry_pkt is not None:
             # this is a retry execute. Wait much longer than usual because
             # a required time delay not expired could have been received
             # on the previous attempt
@@ -478,7 +480,7 @@ class UDS_SAEnumerator(UDS_Enumerator):
         if response.service == 0x7f and \
                 response.negativeResponseCode in [0x24, 0x37]:
             # requiredTimeDelayNotExpired or requestSequenceError
-            if self._retry_pkt is None:
+            if super(UDS_SAEnumerator, self)._retry_pkt is None:
                 # This was no retry since the retry_pkt is None
                 self._retry_pkt = request
                 log_interactive.debug(
@@ -487,13 +489,13 @@ class UDS_SAEnumerator(UDS_Enumerator):
                 return True
             else:
                 # This was an unsuccessful retry, continue execute
-                self._retry_pkt = None
+                self._retry_pkt = None  # type: ignore
                 log_interactive.warning(
                     "[-] Unsuccessful retry. NR: %s!",
                     response.sprintf("%UDS_NR.negativeResponseCode%"))
                 return False
         else:
-            self._retry_pkt = None
+            self._retry_pkt = None  # type: ignore
 
         if response.service == 0x67 and response.securityAccessType % 2 == 1:
             log_interactive.debug("[i] Seed received. Leave scan to try a key")
@@ -539,7 +541,8 @@ class UDS_SAEnumerator(UDS_Enumerator):
             return True
 
 
-class UDS_SA_XOR_Enumerator(UDS_SAEnumerator, StateGenerator):
+class UDS_SA_XOR_Enumerator(UDS_SAEnumerator,
+                            StateGeneratingServiceEnumerator):
     _description = "XOR SecurityAccess supported"
     _transition_function_args = dict()  # type: Dict[_Edge, int]
 
@@ -622,7 +625,7 @@ class UDS_SA_XOR_Enumerator(UDS_SAEnumerator, StateGenerator):
                 log_interactive.debug("Security Access found.")
                 # create edge
                 new_state = copy.copy(last_state)
-                new_state.security_level = seed.securityAccessType + 1  # type: ignore  # noqa: E501
+                new_state.security_level = seed.securityAccessType + 1
                 edge = (last_state, new_state)
                 self._transition_function_args[edge] = sec_lvl
                 return edge
