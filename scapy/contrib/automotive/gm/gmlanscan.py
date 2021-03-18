@@ -26,7 +26,7 @@ from scapy.contrib.automotive.gm.gmlanutils import GMLAN_GetSecurityAccess, \
     GMLAN_InitDiagnostics, GMLAN_TesterPresentSender, GMLAN_RequestDownload
 
 from scapy.contrib.automotive.scanner.test_case import AutomotiveTestCaseABC, \
-    _SocketUnion, _TransitionTuple, StateGenerator
+    _SocketUnion, _TransitionTuple
 from scapy.contrib.automotive.scanner.enumerator import ServiceEnumerator, \
     _AutomotiveTestCaseScanResult, StateGeneratingServiceEnumerator
 from scapy.contrib.automotive.scanner.configuration import \
