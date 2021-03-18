@@ -220,8 +220,8 @@ class StateGenerator(ABC):
         :param edge: Tuple of EcuState objects for the requested
                      transition function
         :return: Returns an optional tuple consisting of a transition function,
-                 a keyword arguments dictionary for the transition funtion
-                 and a cleanup funtion. Both functions
+                 a keyword arguments dictionary for the transition function
+                 and a cleanup function. Both functions
                  take a Socket and the TestCaseExecutor configuration as
                  arguments and return True if the execution was successful.
                  The first function is the state enter function, the second
