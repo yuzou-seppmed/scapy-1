@@ -219,10 +219,10 @@ class ServiceEnumerator(AutomotiveTestCase, ABC):
             # Nothing to evaluate, return and continue execute
             return False
 
-        exit_if_service_not_supported = kwargs.pop(
-            "exit_if_service_not_supported", False)
-
-        retry_if_busy_returncode = kwargs.pop("retry_if_busy_returncode", True)
+        exit_if_service_not_supported = \
+            kwargs.pop("exit_if_service_not_supported", False)
+        retry_if_busy_returncode = \
+            kwargs.pop("retry_if_busy_returncode", True)
 
         if exit_if_service_not_supported and response.service == 0x7f:
             response_code = self._get_negative_response_code(response)
