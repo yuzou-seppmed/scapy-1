@@ -160,7 +160,7 @@ class UDS_DSCEnumerator(UDS_Enumerator, StateGeneratingServiceEnumerator):
             UDS_TPEnumerator.cleanup
 
 
-class UDS_TPEnumerator(UDS_Enumerator, StateGenerator):
+class UDS_TPEnumerator(UDS_Enumerator, StateGeneratingServiceEnumerator):
     _description = "TesterPresent supported"
 
     def _get_initial_requests(self, **kwargs):

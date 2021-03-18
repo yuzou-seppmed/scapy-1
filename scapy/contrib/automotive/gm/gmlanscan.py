@@ -100,7 +100,7 @@ class GMLAN_ServiceEnumerator(GMLAN_Enumerator):
                 label)
 
 
-class GMLAN_TPEnumerator(GMLAN_Enumerator, StateGenerator):
+class GMLAN_TPEnumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
     _description = "TesterPresent supported"
 
     def _get_initial_requests(self, **kwargs):
