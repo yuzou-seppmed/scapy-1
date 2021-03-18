@@ -41,9 +41,9 @@ from scapy.contrib.automotive.scanner.executor import \
 from scapy.contrib.automotive.gm.gmlan_ecu_states import *  # noqa: F401, F403
 
 if six.PY34:
-    from abc import ABC, abstractmethod
+    from abc import ABC
 else:
-    from abc import ABCMeta, abstractmethod
+    from abc import ABCMeta
     ABC = ABCMeta('ABC', (), {})  # type: ignore
 
 __all__ = ["GMLAN_Scanner", "GMLAN_ServiceEnumerator", "GMLAN_RDBIEnumerator",

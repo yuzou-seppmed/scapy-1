@@ -39,9 +39,9 @@ from scapy.contrib.automotive.scanner.executor import AutomotiveTestCaseExecutor
 from scapy.contrib.automotive.uds_ecu_states import *  # noqa: F401, F403
 
 if six.PY34:
-    from abc import ABC, abstractmethod
+    from abc import ABC
 else:
-    from abc import ABCMeta, abstractmethod
+    from abc import ABCMeta
     ABC = ABCMeta('ABC', (), {})  # type: ignore
 
 # Definition outside the class UDS_RMBASequentialEnumerator
