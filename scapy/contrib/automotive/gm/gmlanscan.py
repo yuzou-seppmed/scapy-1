@@ -19,22 +19,32 @@ from scapy.contrib.automotive.gm.gmlan import GMLAN, GMLAN_SA, GMLAN_RD, \
     GMLAN_NR, GMLAN_WDBI, GMLAN_SAPR, GMLAN_DC, GMLAN_PM
 from scapy.contrib.automotive.ecu import EcuState
 from scapy.packet import Packet
+import scapy.modules.six as six
 from scapy.contrib.isotp import ISOTPSocket
 from scapy.error import Scapy_Exception, log_interactive
 from scapy.contrib.automotive.gm.gmlanutils import GMLAN_GetSecurityAccess, \
     GMLAN_InitDiagnostics, GMLAN_TesterPresentSender, GMLAN_RequestDownload
 
 from scapy.contrib.automotive.scanner.test_case import AutomotiveTestCaseABC, \
-    _SocketUnion, _TransitionTuple
+    _SocketUnion, _TransitionTuple, StateGenerator
 from scapy.contrib.automotive.scanner.enumerator import ServiceEnumerator, \
     _AutomotiveTestCaseScanResult, StateGeneratingServiceEnumerator
-from scapy.contrib.automotive.scanner.configuration import AutomotiveTestCaseExecutorConfiguration  # noqa: E501
+from scapy.contrib.automotive.scanner.configuration import \
+    AutomotiveTestCaseExecutorConfiguration
 from scapy.contrib.automotive.scanner.graph import _Edge
-from scapy.contrib.automotive.scanner.staged_test_case import StagedAutomotiveTestCase  # noqa: E501
-from scapy.contrib.automotive.scanner.executor import AutomotiveTestCaseExecutor  # noqa: E501
+from scapy.contrib.automotive.scanner.staged_test_case import \
+    StagedAutomotiveTestCase
+from scapy.contrib.automotive.scanner.executor import \
+    AutomotiveTestCaseExecutor
 
 # TODO: Refactor this import
 from scapy.contrib.automotive.gm.gmlan_ecu_states import *  # noqa: F401, F403
+
+if six.PY34:
+    from abc import ABC, abstractmethod
+else:
+    from abc import ABCMeta, abstractmethod
+    ABC = ABCMeta('ABC', (), {})  # type: ignore
 
 __all__ = ["GMLAN_Scanner", "GMLAN_ServiceEnumerator", "GMLAN_RDBIEnumerator",
            "GMLAN_RDBPIEnumerator", "GMLAN_RMBAEnumerator",
@@ -45,8 +55,7 @@ __all__ = ["GMLAN_Scanner", "GMLAN_ServiceEnumerator", "GMLAN_RDBIEnumerator",
            "GMLAN_DCEnumerator"]
 
 
-class GMLAN_Enumerator(ServiceEnumerator):
-
+class GMLAN_Enumerator(ServiceEnumerator, ABC):
     @staticmethod
     def _get_negative_response_code(resp):
         # type: (Packet) -> int
@@ -91,7 +100,7 @@ class GMLAN_ServiceEnumerator(GMLAN_Enumerator):
                 label)
 
 
-class GMLAN_TPEnumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
+class GMLAN_TPEnumerator(GMLAN_Enumerator, StateGenerator):
     _description = "TesterPresent supported"
 
     def _get_initial_requests(self, **kwargs):
@@ -99,10 +108,13 @@ class GMLAN_TPEnumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
         return [GMLAN(service=0x3E)]
 
     @staticmethod
-    def enter(socket, configuration, kwargs):
-        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration, Dict[str, Any]) -> bool  # noqa: E501
+    def enter(socket,  # type: _SocketUnion
+              configuration,  # type: AutomotiveTestCaseExecutorConfiguration
+              kwargs  # type: Dict[str, Any]
+              ):
+        # type: (...) -> bool
         GMLAN_TPEnumerator.cleanup(socket, configuration)
-        configuration["tps"] = GMLAN_TesterPresentSender(socket)  # noqa: E501
+        configuration["tps"] = GMLAN_TesterPresentSender(socket)
         configuration["tps"].start()
         return True
 
@@ -150,8 +162,6 @@ class GMLAN_IDOEnumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
         edge = super(GMLAN_IDOEnumerator, self).get_new_edge(socket, config)
         if edge:
             state, new_state = edge
-            if state == new_state:
-                return None
             new_state.tp = 1
             return state, new_state
         return None
@@ -161,6 +171,8 @@ class GMLAN_IDOEnumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
         # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration, Dict[str, Any]) -> bool  # noqa: E501
         res = GMLAN_TPEnumerator.enter(sock, conf, kwargs)
         res2 = GMLAN_IDOEnumerator.enter_diagnostic_session(sock)
+        if not res2:
+            GMLAN_TPEnumerator.cleanup(sock, conf)
         return res and res2
 
     def get_transition_function(self, socket, edge):
@@ -245,11 +257,11 @@ class GMLAN_SA1Enumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
         keyfunction = kwargs.pop("keyfunction", None)
         verbose = kwargs.pop("verbose", False)
         retry = kwargs.pop("retry", 3)
+        # TODO: Longterm.. remove this gmlanutils function
         supported = GMLAN_GetSecurityAccess(
             socket, keyfunction, level=1, retry=retry, timeout=timeout,
             verbose=verbose)
 
-        # TODO: Refactor result storage
         if supported:
             self._store_result(state, GMLAN() / GMLAN_SA(subfunction=2),
                                GMLAN() / GMLAN_SAPR(subfunction=2))
@@ -288,6 +300,8 @@ class GMLAN_SA1Enumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
         rt = conf[GMLAN_SA1Enumerator.__name__].get("retry", 5)
         res2 = GMLAN_GetSecurityAccess(
             sock, kf, level=1, timeout=tm, verbose=vb, retry=rt)
+        if not res:
+            GMLAN_TPEnumerator.cleanup(sock, conf)
         return res and res2
 
     def get_transition_function(self, socket, edge):
@@ -346,6 +360,8 @@ class GMLAN_RDEnumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
         # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration, Dict[str, Any]) -> bool  # noqa: E501
         res = GMLAN_TPEnumerator.enter(sock, conf, kwargs)
         res2 = GMLAN_RequestDownload(sock, 0x10, timeout=10, verbose=False)
+        if not res:
+            GMLAN_TPEnumerator.cleanup(sock, conf)
         return res and res2
 
     def get_transition_function(self, socket, edge):
@@ -398,6 +414,8 @@ class GMLAN_PMEnumerator(GMLAN_Enumerator, StateGeneratingServiceEnumerator):
         # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration, Dict[str, Any]) -> bool  # noqa: E501
         res = GMLAN_TPEnumerator.enter(sock, conf, kwargs)
         res2 = GMLAN_InitDiagnostics(sock, timeout=20, verbose=False)
+        if not res:
+            GMLAN_TPEnumerator.cleanup(sock, conf)
         return res and res2
 
     def get_transition_function(self, socket, edge):

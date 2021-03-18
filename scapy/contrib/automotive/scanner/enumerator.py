@@ -61,7 +61,7 @@ else:
         ["state", "req", "resp", "req_ts", "resp_ts"])
 
 
-class ServiceEnumerator(AutomotiveTestCase):
+class ServiceEnumerator(AutomotiveTestCase, ABC):
     """ Base class for ServiceEnumerators of automotive diagnostic protocols"""
 
     def __init__(self):
@@ -527,15 +527,32 @@ class ServiceEnumerator(AutomotiveTestCase):
         return supported_resps
 
 
-class StateGeneratingServiceEnumerator(ServiceEnumerator, StateGenerator):
+class StateGeneratingServiceEnumerator(ServiceEnumerator, StateGenerator, ABC):
 
     def __init__(self):
         # type: () -> None
         super(StateGeneratingServiceEnumerator, self).__init__()
+
+        # Internal storage of request packets for a certain Edge. If an edge
+        # is found during the evaluation of the last result of the
+        # ServiceEnumerator, the according request of the result tuple is
+        # stored together with the new Edge.
         self._edge_requests = dict()  # type: Dict[_Edge, Packet]
 
-    def get_new_edge(self, socket, config):
-        # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> Optional[_Edge]  # noqa: E501
+    def get_new_edge(self,
+                     socket,  # type: _SocketUnion
+                     config  # type: AutomotiveTestCaseExecutorConfiguration
+                     ):
+        # type: (...) -> Optional[_Edge]
+        """
+        Basic identification of a new edge. The last response is evaluated.
+        If this response packet can modify the state of an Ecu, this new
+        state is returned, otherwise None.
+
+        :param socket: Socket to the DUT (unused)
+        :param config: Global configuration of the executor (unused)
+        :return: tuple of old EcuState and new EcuState, or None
+        """
         try:
             state, req, resp, _, _ = cast(ServiceEnumerator, self).results[-1]
         except IndexError:
@@ -552,18 +569,53 @@ class StateGeneratingServiceEnumerator(ServiceEnumerator, StateGenerator):
         else:
             return None
 
-    @abstractmethod
+    @staticmethod
+    def transition_function(
+            sock,  # type: _SocketUnion
+            config,  # type: AutomotiveTestCaseExecutorConfiguration
+            kwargs  # type: Dict[str, Any]
+    ):
+        # type: (...) -> bool
+        """
+        Very basic transition function. This function sends a given request
+        in kwargs and evaluates the response.
+
+        :param sock: Connection to the DUT
+        :param config: Global configuration of the executor (unused)
+        :param kwargs: Dictionary with arguments. This function only uses
+                       the argument *"req"* which must contain a Packet,
+                       causing an EcuState transition of the DUT.
+        :return: True in case of a successful transition, else False
+        """
+        req = kwargs.get("req", None)
+        if req is None:
+            return False
+
+        try:
+            res = sock.sr1(req, timeout=20, verbose=False)
+            return res is not None and res.service != 0x7f
+        except (OSError, ValueError, Scapy_Exception) as e:
+            log_interactive.critical(
+                "[-] Exception in transition function: %s", e)
+            return False
+
+    def get_transition_function_description(self, edge):
+        # type: (_Edge) -> str
+        return repr(self._edge_requests[edge])
+
+    def get_transition_function_kwargs(self, edge):
+        # type: (_Edge) -> Dict[str, Any]
+        req = self._edge_requests[edge]
+        kwargs = {
+            "desc": self.get_transition_function_description(req),
+            "req": req
+        }
+        return kwargs
+
     def get_transition_function(self, socket, edge):
         # type: (_SocketUnion, _Edge) -> Optional[_TransitionTuple]
-        """
-
-        :param socket: Socket to target
-        :param edge: Tuple of EcuState objects for the requested
-                     transition function
-        :return: Returns an optional tuple with two functions. Both functions
-                 take a Socket and the TestCaseExecutor configuration as
-                 arguments and return True if the execution was successful.
-                 The first function is the state enter function, the second
-                 function is a cleanup function
-        """
-        raise NotImplementedError
+        try:
+            return self.transition_function, \
+                self.get_transition_function_kwargs(edge), None
+        except KeyError:
+            return None

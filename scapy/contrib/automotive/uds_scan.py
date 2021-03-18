@@ -18,6 +18,7 @@ from typing import Sequence
 from scapy.compat import Dict, Optional, List, Type, Any, Iterable, Tuple, \
     cast, Union, NamedTuple
 from scapy.packet import Raw, Packet
+import scapy.modules.six as six
 from scapy.error import Scapy_Exception, log_interactive
 from scapy.contrib.automotive.uds import UDS, UDS_NR, UDS_DSC, UDS_TP, \
     UDS_RDBI, UDS_WDBI, UDS_SA, UDS_RC, UDS_IOCBI, UDS_RMBA, UDS_ER, \
@@ -28,7 +29,7 @@ from scapy.contrib.automotive.scanner.enumerator import ServiceEnumerator, \
     _AutomotiveTestCaseScanResult, _AutomotiveTestCaseFilteredScanResult, \
     StateGeneratingServiceEnumerator
 from scapy.contrib.automotive.scanner.test_case import AutomotiveTestCaseABC, \
-    _SocketUnion, _TransitionTuple
+    _SocketUnion, _TransitionTuple, StateGenerator
 from scapy.contrib.automotive.scanner.configuration import AutomotiveTestCaseExecutorConfiguration  # noqa: E501
 from scapy.contrib.automotive.scanner.graph import _Edge
 from scapy.contrib.automotive.scanner.staged_test_case import StagedAutomotiveTestCase  # noqa: E501
@@ -37,6 +38,11 @@ from scapy.contrib.automotive.scanner.executor import AutomotiveTestCaseExecutor
 # TODO: Refactor this import
 from scapy.contrib.automotive.uds_ecu_states import *  # noqa: F401, F403
 
+if six.PY34:
+    from abc import ABC, abstractmethod
+else:
+    from abc import ABCMeta, abstractmethod
+    ABC = ABCMeta('ABC', (), {})  # type: ignore
 
 # Definition outside the class UDS_RMBASequentialEnumerator
 # to allow pickling
@@ -48,7 +54,7 @@ _PointOfInterest = NamedTuple("_PointOfInterest", [
     ("memoryAddressLen", int)])
 
 
-class UDS_Enumerator(ServiceEnumerator):
+class UDS_Enumerator(ServiceEnumerator, ABC):
     @staticmethod
     def _get_negative_response_code(resp):
         # type: (Packet) -> int
@@ -72,7 +78,7 @@ class UDS_Enumerator(ServiceEnumerator):
         return response.sprintf("NR: %UDS_NR.negativeResponseCode%")
 
 
-class UDS_DSCEnumerator(StateGeneratingServiceEnumerator, UDS_Enumerator):
+class UDS_DSCEnumerator(UDS_Enumerator, StateGeneratingServiceEnumerator):
     _description = "Available sessions"
 
     def _get_initial_requests(self, **kwargs):
@@ -81,10 +87,11 @@ class UDS_DSCEnumerator(StateGeneratingServiceEnumerator, UDS_Enumerator):
         return UDS() / UDS_DSC(diagnosticSessionType=session_range)
 
     def execute(self, socket, state, timeout=3, execution_time=1200, **kwargs):
-        # type: (_SocketUnion, EcuState, int, int, Any) -> None  # noqa: E501
+        # type: (_SocketUnion, EcuState, int, int, Any) -> None
 
         overwrite_timeout = kwargs.pop("overwrite_timeout", True)
-        # remove args from kwargs since they will be overwritten
+
+        # remove from kwargs since they will be overwritten
         kwargs.pop("exit_if_service_not_supported", False)
         kwargs.pop("retry_if_busy_returncode", False)
 
@@ -153,7 +160,7 @@ class UDS_DSCEnumerator(StateGeneratingServiceEnumerator, UDS_Enumerator):
             UDS_TPEnumerator.cleanup
 
 
-class UDS_TPEnumerator(UDS_Enumerator, StateGeneratingServiceEnumerator):
+class UDS_TPEnumerator(UDS_Enumerator, StateGenerator):
     _description = "TesterPresent supported"
 
     def _get_initial_requests(self, **kwargs):
@@ -317,8 +324,11 @@ class UDS_RDBIEnumerator(UDS_Enumerator):
 
 class UDS_RDBISelectiveEnumerator(StagedAutomotiveTestCase):
     @staticmethod
-    def __connector_random_to_sequential(rdbi_random, _):
-        # type: (AutomotiveTestCaseABC, AutomotiveTestCaseABC) -> Dict[str, Any]  # noqa: E501
+    def __connector_random_to_sequential(
+            rdbi_random,  # type: AutomotiveTestCaseABC
+            _  # type: AutomotiveTestCaseABC
+    ):
+        # type: (...) -> Dict[str, Any]
         rdbi_random = cast(UDS_Enumerator, rdbi_random)
         identifiers_with_positive_response = \
             [p.resp.dataIdentifier
@@ -541,8 +551,7 @@ class UDS_SAEnumerator(UDS_Enumerator):
             return True
 
 
-class UDS_SA_XOR_Enumerator(UDS_SAEnumerator,
-                            StateGeneratingServiceEnumerator):
+class UDS_SA_XOR_Enumerator(UDS_SAEnumerator, StateGenerator):
     _description = "XOR SecurityAccess supported"
     _transition_function_args = dict()  # type: Dict[_Edge, int]
 
@@ -997,6 +1006,5 @@ class UDS_Scanner(AutomotiveTestCaseExecutor):
     def default_test_case_clss(self):
         # type: () -> List[Type[AutomotiveTestCaseABC]]
         return [UDS_ServiceEnumerator, UDS_DSCEnumerator, UDS_TPEnumerator,
-                UDS_SAEnumerator, UDS_RDBIEnumerator,
-                UDS_WDBISelectiveEnumerator,
+                UDS_SAEnumerator, UDS_WDBISelectiveEnumerator,
                 UDS_RMBAEnumerator, UDS_RCEnumerator, UDS_IOCBIEnumerator]

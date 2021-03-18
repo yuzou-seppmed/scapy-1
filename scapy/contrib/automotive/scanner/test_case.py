@@ -124,7 +124,7 @@ class AutomotiveTestCaseABC(ABC):
         raise NotImplementedError
 
 
-class AutomotiveTestCase(AutomotiveTestCaseABC):
+class AutomotiveTestCase(AutomotiveTestCaseABC, ABC):
     """ Base class for TestCases"""
 
     _description = "AutomotiveTestCase"
@@ -206,7 +206,6 @@ class TestCaseGenerator(ABC):
 
 
 class StateGenerator(ABC):
-
     @abstractmethod
     def get_new_edge(self, socket, config):
         # type: (_SocketUnion, AutomotiveTestCaseExecutorConfiguration) -> Optional[_Edge]  # noqa: E501
@@ -220,7 +219,9 @@ class StateGenerator(ABC):
         :param socket: Socket to target
         :param edge: Tuple of EcuState objects for the requested
                      transition function
-        :return: Returns an optional tuple with two functions. Both functions
+        :return: Returns an optional tuple consisting of a transition function,
+                 a keyword arguments dictionary for the transition funtion
+                 and a cleanup funtion. Both functions
                  take a Socket and the TestCaseExecutor configuration as
                  arguments and return True if the execution was successful.
                  The first function is the state enter function, the second
