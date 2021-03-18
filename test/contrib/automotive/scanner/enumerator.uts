@@ -223,7 +223,7 @@ assert len(e.results_without_response) == 0
 e.execute(sock, EcuState(session=2), timeout=0.1)
 
 assert len(e.filtered_results) == 10
-assert len(e.results_with_response) == 20
+assert len(e.results_with_response) == 10
 assert len(e.results_without_response) == 10
 
 
