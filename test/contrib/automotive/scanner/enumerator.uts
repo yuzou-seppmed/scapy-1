@@ -186,12 +186,12 @@ class MockISOTPSocket(SuperSocket):
             for c in rcvd_queue:
                 self.rcvd_queue.put(c)
     def recv_raw(self, x=MTU):
-        pkt = bytes(self.rcvd_queue.get(True, 0.1))
-        return UDS, pkt, time.time()
+        pkt = bytes(self.rcvd_queue.get(True, 0.01))
+        return UDS, pkt, 10.0
     def send(self, x):
         sx = raw(x)
         try:
-            x.sent_time = time.time()
+            x.sent_time = 9.0
         except AttributeError:
             pass
         self.sent_queue.put(sx)
@@ -220,11 +220,97 @@ assert len(e.filtered_results) == 10
 assert len(e.results_with_response) == 10
 assert len(e.results_without_response) == 0
 
-e.execute(sock, EcuState(session=2), timeout=0.1)
+assert e.has_completed(EcuState(session=1))
+assert e.completed
+
+e.execute(sock, EcuState(session=2), timeout=0.01)
 
 assert len(e.filtered_results) == 10
 assert len(e.results_with_response) == 10
 assert len(e.results_without_response) == 10
+
+assert e.has_completed(EcuState(session=2))
+
+e.execute(sock, EcuState(session=3), timeout=0.01, exit_if_no_answer_received=True)
+
+assert not e.has_completed(EcuState(session=3))
+assert not e.completed
+assert len(e.scanned_states) == 3
+
+= Test negative response code service not supported
+
+sock.rcvd_queue.put(b"\x7f\x01\x11")
+sock.rcvd_queue.put(b"\x7f\x01\x7f")
+
+e = MyTestCase()
+
+e.execute(sock, EcuState(session=1), exit_if_service_not_supported=True)
+
+assert e._retry_pkt is None
+assert len(e.results_with_response) == 1
+assert len(e.results_with_negative_response) == 1
+assert e.completed
+
+e.execute(sock, EcuState(session=2), exit_if_service_not_supported=True)
+
+assert e._retry_pkt is None
+assert len(e.results_with_response) == 2
+assert len(e.results_with_negative_response) == 2
+assert e.completed
+
+= Test negative response code retry if busy
+
+sock.rcvd_queue.put(b"\x7f\x01\x21")
+sock.rcvd_queue.put(b"\x7f\x01\x10")
+
+e = MyTestCase()
+
+e.execute(sock, EcuState(session=1))
+
+assert e._retry_pkt is not None
+assert len(e.results_with_response) == 1
+assert len(e.results_with_negative_response) == 1
+assert len(e.results_without_response) == 0
+assert not e.completed
+
+e.execute(sock, EcuState(session=1))
+
+assert e._retry_pkt is None
+assert len(e.results_with_response) == 2
+assert len(e.results_with_negative_response) == 2
+assert len(e.results_without_response) == 9
+assert e.completed
+assert e.has_completed(EcuState(session=1))
+
+= Test negative response code don't retry if busy
+
+sock.rcvd_queue.put(b"\x7f\x01\x21")
+
+e = MyTestCase()
+
+e.execute(sock, EcuState(session=1), retry_if_busy_returncode=False)
+
+assert e._retry_pkt is None
+assert len(e.results_with_response) == 1
+assert len(e.results_with_negative_response) == 1
+assert len(e.results_without_response) == 9
+assert e.completed
+assert e.has_completed(EcuState(session=1))
+
+= Test execution time
+
+sock.rcvd_queue.put(b"\x7f\x01\x10")
+
+e = MyTestCase()
+
+e.execute(sock, EcuState(session=1), execution_time=-1)
+
+assert e._retry_pkt is None
+assert len(e.results_with_response) == 1
+assert len(e.results_with_negative_response) == 1
+assert len(e.results_without_response) == 0
+assert not e.completed
+assert not e.has_completed(EcuState(session=1))
 
 
 + AutomotiveTestCaseExecutorConfiguration tests

@@ -9,6 +9,7 @@
 
 import time
 from collections import defaultdict, OrderedDict
+from itertools import chain
 
 from scapy.compat import Any, Union, List, Optional, Iterable, \
     Dict, Tuple, Set, Callable, cast, NamedTuple, FAKE_TYPING, orb
@@ -144,7 +145,7 @@ class ServiceEnumerator(AutomotiveTestCase, ABC):
             res.time if res is not None else None))
 
     def __get_retry_iterator(self):
-        # type: () -> Optional[Iterable[Packet]]
+        # type: () -> Iterable[Packet]
         if self._retry_pkt:
             if isinstance(self._retry_pkt, Packet):
                 it = [self._retry_pkt]  # type: Iterable[Packet]
@@ -152,7 +153,8 @@ class ServiceEnumerator(AutomotiveTestCase, ABC):
                 # assume self.retry_pkt is a generator or list
                 it = self._retry_pkt
             return it
-        return None
+        else:
+            return []
 
     def __get_initial_request_iterator(self, state, **kwargs):
         # type: (EcuState, Any) -> Iterable[Packet]
@@ -164,8 +166,8 @@ class ServiceEnumerator(AutomotiveTestCase, ABC):
 
     def __get_request_iterator(self, state, **kwargs):
         # type: (EcuState, Optional[Dict[str, Any]]) -> Iterable[Packet]
-        return self.__get_retry_iterator() or \
-            self.__get_initial_request_iterator(state, **kwargs)
+        return chain(self.__get_retry_iterator(),
+                     self.__get_initial_request_iterator(state, **kwargs))
 
     def execute(self, socket, state, **kwargs):
         # type: (_SocketUnion, EcuState, Any) -> None
@@ -181,12 +183,6 @@ class ServiceEnumerator(AutomotiveTestCase, ABC):
             "[i] Start execution of enumerator: %s", time.ctime(start_time))
 
         for req in it:
-            if (start_time + execution_time) < time.time():
-                log_interactive.debug(
-                    "[i] Finished execution time of enumerator: %s",
-                    time.ctime())
-                return
-
             try:
                 res = socket.sr1(req, timeout=timeout, verbose=False)
             except (OSError, ValueError, Scapy_Exception) as e:
@@ -207,6 +203,12 @@ class ServiceEnumerator(AutomotiveTestCase, ABC):
                                       "of response evaluation")
                 return
 
+            if (start_time + execution_time) < time.time():
+                log_interactive.debug(
+                    "[i] Finished execution time of enumerator: %s",
+                    time.ctime())
+                return
+
         log_interactive.info("[i] Finished iterator execution")
         self._state_completed[state] = True
         log_interactive.debug("[i] States completed %s",
@@ -217,7 +219,7 @@ class ServiceEnumerator(AutomotiveTestCase, ABC):
 
         if response is None:
             # Nothing to evaluate, return and continue execute
-            return False
+            return kwargs.pop("exit_if_no_answer_received", False)
 
         exit_if_service_not_supported = \
             kwargs.pop("exit_if_service_not_supported", False)
